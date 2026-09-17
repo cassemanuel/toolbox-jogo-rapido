@@ -12,6 +12,7 @@ import time
 from typing import Callable, Optional
 import psutil
 
+from core.binarios import resolver_executavel
 from core.calculadora import (
     BITRATE_MAX_KBPS,
     BITRATE_MIN_KBPS,
@@ -19,6 +20,8 @@ from core.calculadora import (
 )
 
 _CREATIONFLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+_FFMPEG = resolver_executavel("ffmpeg")
+_FFPROBE = resolver_executavel("ffprobe")
 
 _processos_ativos: set[subprocess.Popen] = set()
 _lock_processos = threading.Lock()
@@ -166,7 +169,7 @@ class ResultadoCompressaoVideo:
 
 def obter_duracao_video(origem: Path) -> float:
     cmd = [
-        "ffprobe",
+        _FFPROBE,
         "-v",
         "error",
         "-show_entries",
@@ -265,7 +268,7 @@ def comprimir_video(
 
     if destino.suffix.lower() == ".webm":
         cmd = [
-            "ffmpeg",
+            _FFMPEG,
             "-nostats",
             "-v",
             "error",
@@ -302,7 +305,7 @@ def comprimir_video(
         ]
     elif destino.suffix.lower() == ".mp4":
         cmd = [
-            "ffmpeg",
+            _FFMPEG,
             "-nostats",
             "-v",
             "error",
