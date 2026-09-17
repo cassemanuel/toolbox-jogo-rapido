@@ -154,7 +154,7 @@ class AbaPdf(ctk.CTkFrame):
         text="Abrir Pasta de Destino",
         width=160,
         command=lambda: abrir_pasta_ou_padrao(
-            self._ultimo_destino, self.pdf_path.get()
+            self._ultimo_destino, ""
         ),
     )
     self.btn_pdf_abrir.pack(anchor="e", padx=15, pady=(0, 5))
