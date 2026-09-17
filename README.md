@@ -27,7 +27,7 @@ dist\MediaToolkit.exe
 python app.py
 ```
 
-A interface (`customtkinter`) oferece quatro abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto) e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
+A interface (`customtkinter`) oferece cinco abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs (unir vários documentos, extrair páginas por lista `1, 3-5, 8` ou dividir cada página em `paginas_pdf/`) e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
 
 ## Como Executar — Linha de Comando (CLI)
 

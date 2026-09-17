@@ -13,6 +13,7 @@ from core.video import cancelar_processos_ativos
 from gui.aba_calculadora import AbaCalculadora
 from gui.aba_conversao import AbaConversao
 from gui.aba_imagem import AbaImagem
+from gui.aba_pdf import AbaPdf
 from gui.aba_video import AbaVideo
 
 ctk.set_appearance_mode("Dark")
@@ -45,6 +46,9 @@ class App(ctk.CTk):
         ),
         AbaConversao(
             self.tabview.add("Conversão de Mídia"), self._post_ui
+        ),
+        AbaPdf(
+            self.tabview.add("Manipulação de PDFs"), self._post_ui
         ),
         AbaCalculadora(
             self.tabview.add("Calculadora de Tempo"), self._post_ui
