@@ -13,6 +13,7 @@ import time
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
+from core.binarios import obter_diretorio_input_output
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
 from core.logger import salvar_log, ultimo_resumo
 from core.imagem import (
@@ -27,7 +28,6 @@ from core.video import cancelar_processos_ativos, comprimir_video, converter_mid
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-_RAIZ_PROJETO = Path(__file__).resolve().parent
 _FORMATOS_VIDEO_AUDIO = [
     ".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".aac",
 ]
@@ -195,10 +195,10 @@ class App(ctk.CTk):
           os.startfile(caminho)
           return
 
-      os.startfile(_RAIZ_PROJETO)
+      os.startfile(obter_diretorio_input_output())
     except Exception:
       try:
-        os.startfile(_RAIZ_PROJETO)
+        os.startfile(obter_diretorio_input_output())
       except Exception:
         pass
 

@@ -3,7 +3,9 @@
 from datetime import datetime
 from pathlib import Path
 
-_PASTA_LOGS = Path(__file__).resolve().parent.parent / "logs"
+from core.binarios import obter_diretorio_base
+
+_PASTA_LOGS = obter_diretorio_base() / "logs"
 _LIMITE_LOGS = 10
 
 

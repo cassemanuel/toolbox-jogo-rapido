@@ -19,7 +19,8 @@ dist/
 *.exe.spec.bak
 
 # ---- Artefatos do projeto ----
-Arquivos-de-Teste/
+legacy/
+input-output/
 logs/
 *.log
 
