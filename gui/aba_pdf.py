@@ -7,6 +7,8 @@ from typing import Any, Callable
 
 import customtkinter as ctk
 
+from pypdf import PdfReader
+
 from core.binarios import gerar_destino_unico
 from core.pdf import dividir_pdf, extrair_paginas, unir_pdfs
 from gui.comum import (
@@ -124,7 +126,8 @@ class AbaPdf(ctk.CTkFrame):
     # --- Campo de páginas (Extrair) ---
     self.f_paginas = ctk.CTkFrame(card, fg_color="transparent")
     ctk.CTkLabel(
-        self.f_paginas, text="Páginas (ex: 1, 3-5, 8):"
+        self.f_paginas,
+        text="Páginas físicas (folhas 1 a N, ex: 1, 3-5, 8):",
     ).pack(side="left")
     self.pdf_paginas = ctk.CTkEntry(self.f_paginas, width=180)
     self.pdf_paginas.pack(side="left", padx=8)
@@ -222,7 +225,10 @@ class AbaPdf(ctk.CTkFrame):
     acao = self.acao.get()
     self.prog_pdf.set(0)
     self.btn_pdf_start.configure(state="disabled", text="Processando...")
-    self.log_pdf.delete("1.0", "end")
+    self.log_pdf.insert(
+        "end", "\n================ NOVA EXECUÇÃO ================\n"
+    )
+    self.log_pdf.see("end")
 
     if acao == "Unir PDFs":
       self._start_unir()
@@ -279,6 +285,15 @@ class AbaPdf(ctk.CTkFrame):
     destino = gerar_destino_unico(
         origem.parent, origem.stem, "extraido", ".pdf"
     )
+    try:
+      total_folhas = len(PdfReader(str(origem)).pages)
+      self.log_pdf.insert(
+          "end",
+          f">>> Documento possui {total_folhas} folhas físicas"
+          " no total.\n",
+      )
+    except Exception:
+      pass
     self.log_pdf.insert(
         "end",
         f">>> Extraindo páginas {paginas} de {origem.name}\n",

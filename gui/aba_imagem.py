@@ -175,7 +175,9 @@ class AbaImagem(ctk.CTkFrame):
         state="disabled", text="Processando Imagens..."
     )
 
-    self.log_i.delete("1.0", "end")
+    self.log_i.insert(
+        "end", "\n================ NOVA EXECUÇÃO ================\n"
+    )
 
     if origem.is_file():
       destino = gerar_destino_unico(

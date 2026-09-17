@@ -192,7 +192,10 @@ class AbaConversao(ctk.CTkFrame):
 
     self.prog_conv.set(0)
     self.btn_conv_start.configure(state="disabled", text="Convertendo...")
-    self.log_conv.delete("1.0", "end")
+    self.log_conv.insert(
+        "end", "\n================ NOVA EXECUÇÃO ================\n"
+    )
+    self.log_conv.see("end")
 
     if em_lote:
       if not origem.is_dir():

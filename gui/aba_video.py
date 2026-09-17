@@ -153,7 +153,9 @@ class AbaVideo(ctk.CTkFrame):
     )
 
     self._cancel_video.clear()
-    self.log_v.delete("1.0", "end")
+    self.log_v.insert(
+        "end", "\n================ NOVA EXECUÇÃO ================\n"
+    )
     self.prog_v.set(0)
     self.btn_v_start.configure(
         text="Cancelar Compressão",
