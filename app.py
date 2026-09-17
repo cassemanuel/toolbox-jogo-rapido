@@ -7,6 +7,7 @@ processamento.
 import os
 from pathlib import Path
 import queue
+import random
 import subprocess
 import threading
 import time
@@ -126,6 +127,10 @@ class App(ctk.CTk):
       if worker and worker.is_alive():
         worker.join(timeout=3.0)
 
+    if random.random() >= 0.5:
+      self.destroy()
+      return
+
     modal = ctk.CTkToplevel(self)
     modal.title("CRVG - Finalizando")
     modal.geometry("400x460")
@@ -133,7 +138,7 @@ class App(ctk.CTk):
     modal.attributes("-topmost", True)
     modal.protocol("WM_DELETE_WINDOW", self._finalizar)
     self._modal_saida = modal
-    self._restante_saida = 4
+    self._restante_saida = 2
 
     ctk.CTkLabel(
         modal,
