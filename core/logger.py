@@ -21,9 +21,48 @@ def salvar_log(texto: str, origem: str = "app") -> Path:
   while destino.exists():
     sufixo += 1
     destino = _PASTA_LOGS / f"log_{stamp}_{sufixo}.txt"
-  destino.write_text(f"[{origem}]\n{texto}", encoding="utf-8")
+  destino.write_text(
+      f"[{origem}]\n{_expurgar_historico(texto)}", encoding="utf-8"
+  )
   _rotacionar()
   return destino
+
+
+_MARCADOR_HISTORICO = "================ HISTÓRICO DA ÚLTIMA EXECUÇÃO"
+_FIM_HISTORICO = "Pronto para nova operação."
+
+
+def _expurgar_historico(texto: str) -> str:
+  """Remove o bloco de histórico renderizado na UI e o cabeçalho
+  legado '>>> Última execução:', preservando o conteúdo real."""
+  corpo_linhas = []
+  pulando_bloco = False
+  pular_separador = False
+  for linha in texto.splitlines():
+    if linha.startswith(_MARCADOR_HISTORICO):
+      pulando_bloco = True
+      continue
+    if pulando_bloco:
+      if linha.strip() == _FIM_HISTORICO:
+        pulando_bloco = False
+        continue
+      if linha.startswith(">>>"):
+        pulando_bloco = False
+      else:
+        continue
+    if linha.startswith(">>> Última execução:"):
+      pular_separador = True
+      continue
+    if (
+        pular_separador
+        and linha.strip()
+        and set(linha.strip()) == {"-"}
+    ):
+      pular_separador = False
+      continue
+    pular_separador = False
+    corpo_linhas.append(linha)
+  return "\n".join(corpo_linhas).strip()
 
 
 def _rotacionar() -> None:
@@ -38,27 +77,38 @@ def _rotacionar() -> None:
       break
 
 
-def ultimo_resumo() -> str:
-  """Data/hora e primeira linha útil do log mais recente, ou fallback."""
+def ultimo_log() -> tuple[str, str] | None:
+  """Retorna (data/hora formatada, conteúdo) do log mais recente, ou
+  None quando não há registro prévio."""
   arquivos = sorted(
       _PASTA_LOGS.glob("log_*.txt"), key=lambda p: p.stat().st_mtime
   ) if _PASTA_LOGS.is_dir() else []
   if not arquivos:
-    return "Nenhum registro prévio"
+    return None
 
   mais_recente = arquivos[-1]
   stamp = datetime.fromtimestamp(
       mais_recente.stat().st_mtime
   ).strftime("%d/%m/%Y %H:%M:%S")
   try:
-    linhas = [
-        linha.strip()
-        for linha in mais_recente.read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-        if linha.strip() and not linha.startswith("[")
-    ]
-    resumo = linhas[0][:80] if linhas else mais_recente.name
+    conteudo = mais_recente.read_text(
+        encoding="utf-8", errors="replace"
+    ).strip()
   except OSError:
-    resumo = mais_recente.name
+    conteudo = mais_recente.name
+  return stamp, conteudo
+
+
+def ultimo_resumo() -> str:
+  """Data/hora e primeira linha útil do log mais recente, ou fallback."""
+  registro = ultimo_log()
+  if registro is None:
+    return "Nenhum registro prévio"
+  stamp, conteudo = registro
+  linhas = [
+      linha.strip()
+      for linha in conteudo.splitlines()
+      if linha.strip() and not linha.startswith("[")
+  ]
+  resumo = linhas[0][:80] if linhas else stamp
   return f"{stamp} — {resumo}"

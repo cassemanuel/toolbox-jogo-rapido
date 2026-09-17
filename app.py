@@ -13,9 +13,12 @@ import time
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
-from core.binarios import obter_diretorio_input_output
+from core.binarios import (
+    gerar_destino_unico,
+    obter_diretorio_input_output,
+)
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
-from core.logger import salvar_log, ultimo_resumo
+from core.logger import salvar_log, ultimo_log
 from core.imagem import (
     FORMATOS_CONVERSAO,
     FORMATOS_SAIDA,
@@ -73,14 +76,31 @@ class App(ctk.CTk):
     self._setup_conv_tab()
     self._setup_calc_tab()
 
-    resumo = ultimo_resumo()
     for caixa in (self.log_v, self.log_i, self.log_conv):
-      caixa.insert("end", f">>> Última execução: {resumo}\n{'-'*55}\n")
+      self._exibir_historico(caixa)
 
     self.after(75, self._drenar_fila_ui)
 
   def _post_ui(self, fn, *args):
     self._fila_ui.put((fn, args))
+
+  def _exibir_historico(self, caixa: ctk.CTkTextbox):
+    registro = ultimo_log()
+    if registro is None:
+      caixa.insert(
+          "end", ">>> Última execução: Nenhum registro prévio\n"
+          f"{'-'*55}\n"
+      )
+      return
+    stamp, conteudo = registro
+    caixa.insert(
+        "end",
+        f"{'='*16} HISTÓRICO DA ÚLTIMA EXECUÇÃO {'='*16}\n"
+        f"[Data/Hora: {stamp}]\n"
+        f"{conteudo}\n"
+        f"{'='*64}\n"
+        "Pronto para nova operação.\n",
+    )
 
   def _persistir_log(self, caixa: ctk.CTkTextbox, origem: str):
     try:
@@ -314,9 +334,12 @@ class App(ctk.CTk):
       return
 
     ext = self.v_format.get()
-    destino = origem.parent / f"{origem.stem}_comprimido{ext}"
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "comprimido", ext
+    )
 
     self._cancel_video.clear()
+    self.log_v.delete("1.0", "end")
     self.prog_v.set(0)
     self.btn_v_start.configure(
         text="Cancelar Compressão",
@@ -563,8 +586,12 @@ class App(ctk.CTk):
         state="disabled", text="Processando Imagens..."
     )
 
+    self.log_i.delete("1.0", "end")
+
     if origem.is_file():
-      destino = origem.parent / f"{origem.stem}_otimizada{ext_saida}"
+      destino = gerar_destino_unico(
+          origem.parent, origem.stem, "otimizada", ext_saida
+      )
       self.log_i.insert(
           "end",
           f">>> Otimizando arquivo individual: {origem.name}"
@@ -838,6 +865,7 @@ class App(ctk.CTk):
 
     self.prog_conv.set(0)
     self.btn_conv_start.configure(state="disabled", text="Convertendo...")
+    self.log_conv.delete("1.0", "end")
 
     if em_lote:
       if not origem.is_dir():
@@ -874,7 +902,9 @@ class App(ctk.CTk):
         try:
           sucessos = 0
           for i, arq in enumerate(arquivos, 1):
-            destino = pasta_saida / f"{arq.stem}{ext_destino}"
+            destino = gerar_destino_unico(
+                pasta_saida, arq.stem, "convertido", ext_destino
+            )
             self._post_ui(
                 self._conv_log_lote, i, len(arquivos), arq.name
             )
@@ -909,7 +939,9 @@ class App(ctk.CTk):
       )
       return
 
-    destino = origem.parent / f"{origem.stem}_convertido{ext_destino}"
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "convertido", ext_destino
+    )
     self.log_conv.insert(
         "end", f">>> Convertendo: {origem.name} -> {destino.name}\n"
     )

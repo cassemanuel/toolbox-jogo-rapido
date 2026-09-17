@@ -11,6 +11,7 @@ from core.calculadora import (
     converter_minutos,
     converter_segundos,
 )
+from core.binarios import gerar_destino_unico
 from core.imagem import (
     FORMATOS_CONVERSAO,
     FORMATOS_SAIDA,
@@ -54,7 +55,9 @@ def tratar_imagem(args: argparse.Namespace) -> None:
     destino_arquivo = (
         destino
         if destino.suffix
-        else destino / f"{origem.stem}_otimizada{ext_saida}"
+        else gerar_destino_unico(
+            destino, origem.stem, "otimizada", ext_saida
+        )
     )
     res = otimizar_imagem(
         origem,
@@ -148,7 +151,9 @@ def tratar_converter(args: argparse.Namespace) -> None:
     destino = Path(args.destino)
   elif args.formato:
     ext = args.formato if args.formato.startswith(".") else f".{args.formato}"
-    destino = origem.with_name(f"{origem.stem}_convertido{ext}")
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "convertido", ext
+    )
   else:
     print("Erro: especifique --destino ou --formato.")
     sys.exit(1)

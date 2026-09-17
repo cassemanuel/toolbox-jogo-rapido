@@ -11,6 +11,8 @@ import time
 from typing import Generator
 from PIL import Image, ImageOps
 
+from core.binarios import gerar_destino_unico
+
 
 @dataclass(frozen=True)
 class ResultadoCompressao:
@@ -153,12 +155,20 @@ def otimizar_lote(
     ]
 
     ext_saida = FORMATOS_SAIDA[formato_saida]
+    reservados: set[Path] = set()
+    destinos = {
+        arquivo: gerar_destino_unico(
+            diretorio_destino, arquivo.stem, "otimizada", ext_saida,
+            reservados=reservados,
+        )
+        for arquivo in alvos
+    }
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
         futuros = {
             executor.submit(
                 otimizar_imagem,
                 arquivo,
-                diretorio_destino / f"{arquivo.stem}_otimizada{ext_saida}",
+                destinos[arquivo],
                 max_dimensao,
                 qualidade,
                 formato_saida,
@@ -172,10 +182,7 @@ def otimizar_lote(
             except Exception as e:
                 yield ResultadoCompressao(
                     caminho_origem=arquivo,
-                    caminho_destino=(
-                        diretorio_destino
-                        / f"{arquivo.stem}_otimizada{ext_saida}"
-                    ),
+                    caminho_destino=destinos[arquivo],
                     tamanho_original_bytes=0,
                     tamanho_final_bytes=0,
                     sucesso=False,
