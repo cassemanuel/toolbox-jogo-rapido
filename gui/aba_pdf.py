@@ -83,6 +83,7 @@ class AbaPdf(ctk.CTkFrame):
     )
     ctk.CTkLabel(self.f_unico, text="Arquivo PDF:").pack(side="left")
     self.pdf_path = ctk.StringVar()
+    self.pdf_path.trace_add("write", lambda *_: self._atualizar_info_pdf())
     ctk.CTkEntry(
         self.f_unico,
         textvariable=self.pdf_path,
@@ -95,6 +96,13 @@ class AbaPdf(ctk.CTkFrame):
         width=110,
         command=self._pdf_select,
     ).pack(side="left", padx=4)
+    self.lbl_info_pdf = ctk.CTkLabel(
+        self.f_unico,
+        text="",
+        font=ctk.CTkFont(size=11),
+        text_color="#8a8a8a",
+    )
+    self.lbl_info_pdf.pack(side="left", padx=8)
 
     # --- Lista de arquivos (Unir) ---
     self.f_multi = ctk.CTkFrame(card, fg_color="transparent")
@@ -125,10 +133,11 @@ class AbaPdf(ctk.CTkFrame):
 
     # --- Campo de páginas (Extrair) ---
     self.f_paginas = ctk.CTkFrame(card, fg_color="transparent")
-    ctk.CTkLabel(
+    self.lbl_paginas = ctk.CTkLabel(
         self.f_paginas,
         text="Páginas físicas (folhas 1 a N, ex: 1, 3-5, 8):",
-    ).pack(side="left")
+    )
+    self.lbl_paginas.pack(side="left")
     self.pdf_paginas = ctk.CTkEntry(self.f_paginas, width=180)
     self.pdf_paginas.pack(side="left", padx=8)
 
@@ -190,6 +199,25 @@ class AbaPdf(ctk.CTkFrame):
           row=1, column=0, columnspan=4, padx=12, sticky="ew"
       )
       self.btn_pdf_start.configure(text="Dividir em Páginas")
+
+  def _atualizar_info_pdf(self):
+    caminho = Path(self.pdf_path.get().strip())
+    self.lbl_paginas.configure(
+        text="Páginas físicas (folhas 1 a N, ex: 1, 3-5, 8):"
+    )
+    self.lbl_info_pdf.configure(text="")
+    if not caminho.is_file():
+      return
+    try:
+      total = len(PdfReader(str(caminho)).pages)
+    except Exception:
+      return
+    self.lbl_info_pdf.configure(
+        text=f"Total: {total} folhas físicas detectadas"
+    )
+    self.lbl_paginas.configure(
+        text=f"Páginas físicas (folhas 1 a {total}, ex: 1, 3-5, 8):"
+    )
 
   def _pdf_select(self):
     caminho = filedialog.askopenfilename(

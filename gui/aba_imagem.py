@@ -7,6 +7,7 @@ from tkinter import filedialog, messagebox
 from typing import Any, Callable
 
 import customtkinter as ctk
+from PIL import Image
 
 from core.binarios import gerar_destino_unico
 from core.imagem import FORMATOS_SAIDA, otimizar_imagem, otimizar_lote
@@ -92,6 +93,21 @@ class AbaImagem(ctk.CTkFrame):
     self.i_fmt.set("JPEG")
     self.i_fmt.pack(side="left", padx=6)
 
+    self.lbl_estimativa = ctk.CTkLabel(
+        card,
+        text="Tamanho estimado: —",
+        font=ctk.CTkFont(size=11),
+        text_color="#8a8a8a",
+    )
+    self.lbl_estimativa.grid(
+        row=2, column=0, columnspan=4, padx=12, pady=(0, 8),
+        sticky="w",
+    )
+
+    self.i_path.trace_add("write", lambda *_: self._atualizar_estimativa())
+    self.i_max.bind("<KeyRelease>", lambda _e: self._atualizar_estimativa())
+    self.i_qual.bind("<KeyRelease>", lambda _e: self._atualizar_estimativa())
+
     card.grid_columnconfigure(1, weight=1)
 
     self.btn_i_start = ctk.CTkButton(
@@ -122,10 +138,46 @@ class AbaImagem(ctk.CTkFrame):
     )
     self.log_i.pack(fill="both", expand=True, padx=15, pady=10)
 
+  def _atualizar_estimativa(self):
+    neutro = "Tamanho estimado: —"
+    caminho = Path(self.i_path.get().strip())
+    if self.i_modo.get() != "Arquivo Único" or not caminho.is_file():
+      self.lbl_estimativa.configure(text=neutro)
+      return
+    try:
+      max_dim = int(self.i_max.get().strip() or 1920)
+      qualidade = int(self.i_qual.get().strip() or 80)
+      if max_dim <= 0 or not 1 <= qualidade <= 100:
+        raise ValueError
+    except ValueError:
+      self.lbl_estimativa.configure(text=neutro)
+      return
+    try:
+      with Image.open(caminho) as img:
+        w, h = img.size
+    except Exception:
+      self.lbl_estimativa.configure(text=neutro)
+      return
+
+    if max(w, h) > max_dim:
+      escala = max_dim / max(w, h)
+      w_f, h_f = int(w * escala), int(h * escala)
+    else:
+      w_f, h_f = w, h
+
+    bpp = 0.5 + (qualidade / 100.0) * 1.5
+    bytes_est = (w_f * h_f * bpp) / 8
+    orig_kb = caminho.stat().st_size / 1024
+    self.lbl_estimativa.configure(
+        text=f"Tamanho estimado: ~{bytes_est / 1024:.0f} KB"
+        f" ({w_f}x{h_f}px | original: {orig_kb:.0f} KB)"
+    )
+
   def _i_modo_changed(self, modo):
     self.btn_i_buscar.configure(
         text="Buscar Pasta" if modo == "Lote de Pasta" else "Buscar Arquivo"
     )
+    self._atualizar_estimativa()
 
   def _i_buscar(self):
     if self.i_modo.get() == "Lote de Pasta":

@@ -34,6 +34,28 @@ class App(ctk.CTk):
     self._modal_saida: ctk.CTkToplevel | None = None
     self._restante_saida = 0
 
+    rodape = ctk.CTkFrame(self, fg_color="transparent", height=28)
+    rodape.pack(fill="x", side="bottom", padx=20, pady=(0, 8))
+
+    ctk.CTkLabel(
+        rodape,
+        text="Media Automation Toolkit v2.0 • 2021–2026 • Cássio Silva",
+        font=ctk.CTkFont(size=11),
+        text_color="#6e6e6e",
+    ).pack(side="left")
+
+    ctk.CTkButton(
+        rodape,
+        text="[ Sobre / História ]",
+        width=120,
+        height=22,
+        font=ctk.CTkFont(size=11),
+        fg_color="transparent",
+        hover_color="#2b2b2b",
+        text_color="#4a9eff",
+        command=self._abrir_sobre,
+    ).pack(side="right")
+
     self.tabview = ctk.CTkTabview(self, corner_radius=10)
     self.tabview.pack(fill="both", expand=True, padx=20, pady=15)
 
@@ -56,6 +78,38 @@ class App(ctk.CTk):
     ]
 
     self.after(75, self._drenar_fila_ui)
+
+  def _abrir_sobre(self):
+    modal = ctk.CTkToplevel(self)
+    modal.title("Sobre — Media Automation Toolkit")
+    modal.geometry("480x320")
+    modal.resizable(False, False)
+    modal.attributes("-topmost", True)
+
+    ctk.CTkLabel(
+        modal,
+        text="Media Automation Toolkit v2.0",
+        font=ctk.CTkFont(size=14, weight="bold"),
+    ).pack(pady=(15, 5))
+
+    texto = (
+        "Projeto pessoal concebido em 2021 durante a pandemia como um "
+        "utilitário simples em C (programa.c) para cálculos de aceleração "
+        "e tempo de vídeo. Evoluiu ao longo dos anos para suprir gargalos "
+        "de compressão com teto estrito, otimização de imagens em lote, "
+        "manipulação de documentos PDF e conversão multimídia multiformato."
+        "\n\nÚltima atualização: Versão 2.0 (17/09/2026)."
+    )
+    box = ctk.CTkTextbox(
+        modal, wrap="word", font=ctk.CTkFont(size=12), height=180
+    )
+    box.pack(fill="both", expand=True, padx=15, pady=10)
+    box.insert("1.0", texto)
+    box.configure(state="disabled")
+
+    ctk.CTkButton(
+        modal, text="Fechar", width=100, command=modal.destroy
+    ).pack(pady=(0, 12))
 
   def _post_ui(self, fn, *args):
     self._fila_ui.put((fn, args))
