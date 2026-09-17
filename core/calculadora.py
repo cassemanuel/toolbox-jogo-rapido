@@ -8,11 +8,11 @@ class DuracaoFormatada:
   horas: int
   minutos: int
   segundos: int
-  milisegundos: float = 0.0
+  centesimos: int = 0
 
   def __str__(self) -> str:
-    """Formato digital HH:MM:SS.ms"""
-    return (f"{self.horas:02d}:{self.minutos:02d}:{self.segundos:02d}.{int(self.milisegundos * 100):02d}")
+    """Formato digital HH:MM:SS.cs"""
+    return (f"{self.horas:02d}:{self.minutos:02d}:{self.segundos:02d}.{self.centesimos:02d}")
 
   @property
   def texto_descritivo(self) -> str:
@@ -24,15 +24,15 @@ def decompor_segundos(total_segundos: float) -> DuracaoFormatada:
   if total_segundos < 0:
     raise ValueError("A duração não pode ser negativa.")
 
-  total_inteiro = int(total_segundos)
-  milisegundos = round(total_segundos - total_inteiro, 2)
+  total_centesimos = int(round(total_segundos * 100))
+  total_inteiro, centesimos = divmod(total_centesimos, 100)
 
   horas = total_inteiro // 3600
   resto = total_inteiro % 3600
   minutos = resto // 60
   segundos = resto % 60
 
-  return DuracaoFormatada(horas, minutos, segundos, milisegundos)
+  return DuracaoFormatada(horas, minutos, segundos, centesimos)
 
 
 def calcular_aceleracao_tempo(

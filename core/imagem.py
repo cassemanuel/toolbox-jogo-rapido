@@ -80,9 +80,21 @@ def otimizar_lote(
     qualidade: int = 80,
 ) -> Generator[ResultadoCompressao, None, None]:
     extensoes_validas = {".jpg", ".jpeg", ".png", ".webp"}
-    diretorio_destino.mkdir(parents=True, exist_ok=True)
+    try:
+        diretorio_destino.mkdir(parents=True, exist_ok=True)
+        arquivos = sorted(diretorio_origem.iterdir())
+    except OSError as e:
+        yield ResultadoCompressao(
+            caminho_origem=diretorio_origem,
+            caminho_destino=diretorio_destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro=f"Falha de I/O no diretório: {e}",
+        )
+        return
 
-    for arquivo in diretorio_origem.iterdir():
+    for arquivo in arquivos:
         if arquivo.is_file() and arquivo.suffix.lower() in extensoes_validas:
             destino_arquivo = (
                 diretorio_destino / f"{arquivo.stem}_otimizada.jpg"

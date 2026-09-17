@@ -4,6 +4,7 @@ Módulo de compressão de vídeo via FFmpeg com monitoramento de telemetria.
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import subprocess
 import threading
@@ -12,6 +13,41 @@ from typing import Optional
 import psutil
 
 from core.calculadora import calcular_bitrate_alvo_kbps
+
+_CREATIONFLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+_processos_ativos: set[subprocess.Popen] = set()
+_lock_processos = threading.Lock()
+
+
+def _matar_arvore_processo(processo: subprocess.Popen) -> None:
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(processo.pid)],
+                capture_output=True,
+                timeout=10,
+                creationflags=_CREATIONFLAGS,
+            )
+            return
+        except Exception:
+            pass
+    try:
+        processo.kill()
+    except Exception:
+        pass
+
+
+def cancelar_processos_ativos() -> None:
+    with _lock_processos:
+        processos = list(_processos_ativos)
+    for processo in processos:
+        if processo.poll() is None:
+            _matar_arvore_processo(processo)
+            try:
+                processo.wait(timeout=10)
+            except Exception:
+                pass
 
 
 @dataclass
@@ -41,7 +77,9 @@ class MonitorHardware:
     def _obter_modelo_gpu(self) -> str:
         try:
             cmd = ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]
-            out = subprocess.check_output(cmd, encoding="utf-8", timeout=2)
+            out = subprocess.check_output(
+                cmd, encoding="utf-8", timeout=2, creationflags=_CREATIONFLAGS
+            )
             return out.strip().split("\n")[0]
         except Exception:
             return "N/A"
@@ -53,7 +91,9 @@ class MonitorHardware:
                 "--query-gpu=utilization.gpu,memory.used",
                 "--format=csv,noheader,nounits",
             ]
-            out = subprocess.check_output(cmd, encoding="utf-8", timeout=2)
+            out = subprocess.check_output(
+                cmd, encoding="utf-8", timeout=2, creationflags=_CREATIONFLAGS
+            )
             dados = out.strip().split("\n")[0].split(",")
             return float(dados[0].strip()), float(dados[1].strip())
         except Exception:
@@ -128,7 +168,12 @@ def obter_duracao_video(origem: Path) -> float:
         str(origem),
     ]
     resultado = subprocess.run(
-        cmd, capture_output=True, text=True, check=True, timeout=15
+        cmd,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+        creationflags=_CREATIONFLAGS,
     )
     dados = json.loads(resultado.stdout)
     return float(dados["format"]["duration"])
@@ -177,7 +222,21 @@ def comprimir_video(
             mensagem_erro=f"Falha de sonda: {e}",
         )
 
-    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return ResultadoCompressaoVideo(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            duracao_segundos=duracao,
+            tamanho_original_bytes=tamanho_original,
+            tamanho_final_bytes=0,
+            bitrate_k=0,
+            telemetria=telemetria_vazia,
+            sucesso=False,
+            tempo_processamento_s=time.perf_counter() - t_inicio,
+            mensagem_erro=f"Falha ao criar diretório de saída: {e}",
+        )
 
     if destino.suffix.lower() == ".webm":
         cmd = [
@@ -255,8 +314,13 @@ def comprimir_video(
 
     try:
         processo = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=_CREATIONFLAGS,
         )
+        with _lock_processos:
+            _processos_ativos.add(processo)
         _, stderr = processo.communicate()
 
         if processo.returncode != 0:
@@ -281,9 +345,13 @@ def comprimir_video(
 
     except (Exception, KeyboardInterrupt) as err:
         if processo and processo.poll() is None:
-            processo.kill()
+            _matar_arvore_processo(processo)
         telemetria = monitor.parar()
         tempo_total = time.perf_counter() - t_inicio
+        try:
+            destino.unlink(missing_ok=True)
+        except OSError:
+            pass
         return ResultadoCompressaoVideo(
             caminho_origem=origem,
             caminho_destino=destino,
@@ -296,3 +364,7 @@ def comprimir_video(
             tempo_processamento_s=tempo_total,
             mensagem_erro=str(err),
         )
+    finally:
+        if processo is not None:
+            with _lock_processos:
+                _processos_ativos.discard(processo)

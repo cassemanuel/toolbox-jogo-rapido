@@ -108,16 +108,16 @@ def tratar_video(args: argparse.Namespace) -> None:
     print(f"[FALHA] Erro na codificação: {res.mensagem_erro}")
     sys.exit(1)
 
-    tamanho_final_mb = res.tamanho_final_bytes / (1024 * 1024)
-    print("\n" + "=" * 50)
-    print("STATUS              : SUCESSO")
-    print(f"Arquivo Final       : {res.caminho_destino} ({tamanho_final_mb:.2f} MB)")
-    print(f"Bitrate de Vídeo    : {res.bitrate_k} kbps")
-    print(f"GPU Detectada       : {res.telemetria.modelo_gpu}")
-    print(f"Uso CPU (Média/Pico): {res.telemetria.cpu_media:.1f}% / {res.telemetria.cpu_pico:.1f}%")
-    print(f"Uso GPU (Média/Pico): {res.telemetria.gpu_media:.1f}% / {res.telemetria.gpu_pico:.1f}%")
-    print(f"VRAM de Pico        : {res.telemetria.vram_pico_mb:.1f} MB")
-    print("=" * 50)
+  tamanho_final_mb = res.tamanho_final_bytes / (1024 * 1024)
+  print("\n" + "=" * 50)
+  print("STATUS              : SUCESSO")
+  print(f"Arquivo Final       : {res.caminho_destino} ({tamanho_final_mb:.2f} MB)")
+  print(f"Bitrate de Vídeo    : {res.bitrate_k} kbps")
+  print(f"GPU Detectada       : {res.telemetria.modelo_gpu}")
+  print(f"Uso CPU (Média/Pico): {res.telemetria.cpu_media:.1f}% / {res.telemetria.cpu_pico:.1f}%")
+  print(f"Uso GPU (Média/Pico): {res.telemetria.gpu_media:.1f}% / {res.telemetria.gpu_pico:.1f}%")
+  print(f"VRAM de Pico        : {res.telemetria.vram_pico_mb:.1f} MB")
+  print("=" * 50)
 
 
 def main() -> None:
