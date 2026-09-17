@@ -10,14 +10,46 @@ import customtkinter as ctk
 from pypdf import PdfReader
 
 from core.binarios import gerar_destino_unico
-from core.pdf import dividir_pdf, extrair_paginas, unir_pdfs
+from core.pdf import (
+    dividir_pdf,
+    dividir_por_marcadores_pdf,
+    dividir_por_tamanho_pdf,
+    extrair_paginas,
+    mix_alternado_pdf,
+    rotacionar_pdf,
+    unir_pdfs,
+)
 from gui.comum import (
     abrir_pasta_ou_padrao,
     exibir_historico,
     persistir_log,
 )
 
-_ACOES = ["Unir PDFs", "Extrair Páginas", "Dividir"]
+_ACOES = [
+    "Unir",
+    "Extrair",
+    "Dividir",
+    "Rotacionar",
+    "Mix Alternado",
+    "Por Tamanho",
+    "Por Marcador",
+]
+
+_ROTULOS = {
+    "Unir": "Unir Documentos",
+    "Extrair": "Extrair",
+    "Dividir": "Dividir em Páginas",
+    "Rotacionar": "Rotacionar PDF",
+    "Mix Alternado": "Intercalar PDFs",
+    "Por Tamanho": "Dividir por Tamanho",
+    "Por Marcador": "Dividir por Marcadores",
+}
+
+_ANGULOS = {
+    "90° Horário": 90,
+    "180° Invertido": 180,
+    "270° (90° Anti-horário)": 270,
+}
 
 
 def _parse_paginas(texto: str) -> list[int]:
@@ -141,6 +173,84 @@ class AbaPdf(ctk.CTkFrame):
     self.pdf_paginas = ctk.CTkEntry(self.f_paginas, width=180)
     self.pdf_paginas.pack(side="left", padx=8)
 
+    # --- Campos (Rotacionar) ---
+    self.f_rot = ctk.CTkFrame(card, fg_color="transparent")
+    ctk.CTkLabel(self.f_rot, text="Ângulo:").pack(side="left")
+    self.rot_angulo = ctk.CTkComboBox(
+        self.f_rot,
+        values=list(_ANGULOS.keys()),
+        width=190,
+        state="readonly",
+    )
+    self.rot_angulo.set("90° Horário")
+    self.rot_angulo.pack(side="left", padx=8)
+    ctk.CTkLabel(
+        self.f_rot, text="Páginas (vazio = todas):"
+    ).pack(side="left", padx=(14, 4))
+    self.rot_paginas = ctk.CTkEntry(self.f_rot, width=140)
+    self.rot_paginas.pack(side="left", padx=4)
+
+    # --- Campos (Mix Alternado) ---
+    self.f_mix = ctk.CTkFrame(card, fg_color="transparent")
+    self.mix_a = ctk.StringVar()
+    self.mix_b = ctk.StringVar()
+    self.mix_inv = ctk.BooleanVar(value=False)
+
+    linha_a = ctk.CTkFrame(self.f_mix, fg_color="transparent")
+    linha_a.pack(fill="x")
+    ctk.CTkLabel(linha_a, text="Arquivo A (Frentes):").pack(side="left")
+    ctk.CTkEntry(
+        linha_a,
+        textvariable=self.mix_a,
+        placeholder_text="PDF das frentes...",
+        width=320,
+    ).pack(side="left", padx=8)
+    ctk.CTkButton(
+        linha_a,
+        text="Buscar",
+        width=80,
+        command=lambda: self._mix_select(self.mix_a),
+    ).pack(side="left")
+
+    linha_b = ctk.CTkFrame(self.f_mix, fg_color="transparent")
+    linha_b.pack(fill="x", pady=(6, 0))
+    ctk.CTkLabel(linha_b, text="Arquivo B (Versos):").pack(side="left")
+    ctk.CTkEntry(
+        linha_b,
+        textvariable=self.mix_b,
+        placeholder_text="PDF dos versos...",
+        width=320,
+    ).pack(side="left", padx=8)
+    ctk.CTkButton(
+        linha_b,
+        text="Buscar",
+        width=80,
+        command=lambda: self._mix_select(self.mix_b),
+    ).pack(side="left")
+    ctk.CTkCheckBox(
+        linha_b,
+        text="Inverter ordem do Arquivo B (versos na ordem inversa)",
+        variable=self.mix_inv,
+    ).pack(side="left", padx=(14, 0))
+
+    # --- Campos (Por Tamanho) ---
+    self.f_tam = ctk.CTkFrame(card, fg_color="transparent")
+    ctk.CTkLabel(
+        self.f_tam, text="Tamanho Máximo por Parte (MB):"
+    ).pack(side="left")
+    self.tam_mb = ctk.CTkEntry(self.f_tam, width=80)
+    self.tam_mb.insert(0, "10")
+    self.tam_mb.pack(side="left", padx=8)
+
+    # --- Campos (Por Marcador) ---
+    self.f_marc = ctk.CTkFrame(card, fg_color="transparent")
+    ctk.CTkLabel(self.f_marc, text="Nível de Marcador:").pack(
+        side="left"
+    )
+    self.marc_nivel = ctk.CTkEntry(self.f_marc, width=60)
+    self.marc_nivel.insert(0, "1")
+    self.marc_nivel.pack(side="left", padx=8)
+
     card.grid_columnconfigure(1, weight=1)
 
     self.btn_pdf_start = ctk.CTkButton(
@@ -176,29 +286,42 @@ class AbaPdf(ctk.CTkFrame):
     self.log_pdf.pack(fill="both", expand=True, padx=15, pady=10)
 
   def _acao_changed(self, acao):
-    self.f_unico.grid_remove()
-    self.f_multi.grid_remove()
-    self.f_paginas.grid_remove()
+    for f in (
+        self.f_unico,
+        self.f_multi,
+        self.f_paginas,
+        self.f_rot,
+        self.f_mix,
+        self.f_tam,
+        self.f_marc,
+    ):
+      f.grid_remove()
 
-    if acao == "Unir PDFs":
+    self.btn_pdf_start.configure(text=_ROTULOS[acao])
+    if acao == "Unir":
       self.f_multi.grid(
           row=1, column=0, columnspan=4, padx=12, sticky="ew"
       )
-      self.btn_pdf_start.configure(text="Unir Documentos")
-    elif acao == "Extrair Páginas":
-      self.f_unico.grid(
+    elif acao == "Mix Alternado":
+      self.f_mix.grid(
           row=1, column=0, columnspan=4, padx=12, sticky="ew"
       )
-      self.f_paginas.grid(
-          row=2, column=0, columnspan=4, padx=12, pady=(0, 8),
-          sticky="w",
-      )
-      self.btn_pdf_start.configure(text="Extrair")
     else:
       self.f_unico.grid(
           row=1, column=0, columnspan=4, padx=12, sticky="ew"
       )
-      self.btn_pdf_start.configure(text="Dividir em Páginas")
+      extra = {
+          "Extrair": self.f_paginas,
+          "Rotacionar": self.f_rot,
+          "Por Tamanho": self.f_tam,
+          "Por Marcador": self.f_marc,
+      }.get(acao)
+      if extra is not None:
+        extra.grid(
+            row=2, column=0, columnspan=4, padx=12, pady=(0, 8),
+            sticky="w",
+        )
+    self._atualizar_info_pdf()
 
   def _atualizar_info_pdf(self):
     caminho = Path(self.pdf_path.get().strip())
@@ -209,12 +332,19 @@ class AbaPdf(ctk.CTkFrame):
     if not caminho.is_file():
       return
     try:
-      total = len(PdfReader(str(caminho)).pages)
+      reader = PdfReader(str(caminho))
+      total = len(reader.pages)
     except Exception:
       return
-    self.lbl_info_pdf.configure(
-        text=f"Total: {total} folhas físicas detectadas"
-    )
+    texto = f"Total: {total} folhas físicas detectadas"
+    if self.acao.get() == "Por Marcador":
+      try:
+        tem_marcadores = bool(reader.outline)
+      except Exception:
+        tem_marcadores = False
+      if not tem_marcadores:
+        texto += "  —  SEM marcadores/índice interno"
+    self.lbl_info_pdf.configure(text=texto)
     self.lbl_paginas.configure(
         text=f"Páginas físicas (folhas 1 a {total}, ex: 1, 3-5, 8):"
     )
@@ -239,6 +369,16 @@ class AbaPdf(ctk.CTkFrame):
     self._arquivos_unir.clear()
     self._render_lista()
 
+  def _mix_select(self, var):
+    caminho = filedialog.askopenfilename(
+        filetypes=[("Documentos PDF", "*.pdf")]
+    )
+    if caminho:
+      var.set(caminho)
+
+  def _rotulo(self):
+    return _ROTULOS[self.acao.get()]
+
   def _render_lista(self):
     self.lista_pdf.configure(state="normal")
     self.lista_pdf.delete("1.0", "end")
@@ -258,12 +398,20 @@ class AbaPdf(ctk.CTkFrame):
     )
     self.log_pdf.see("end")
 
-    if acao == "Unir PDFs":
+    if acao == "Unir":
       self._start_unir()
-    elif acao == "Extrair Páginas":
+    elif acao == "Extrair":
       self._start_extrair()
-    else:
+    elif acao == "Dividir":
       self._start_dividir()
+    elif acao == "Rotacionar":
+      self._start_rotacionar()
+    elif acao == "Mix Alternado":
+      self._start_mix()
+    elif acao == "Por Tamanho":
+      self._start_tamanho()
+    else:
+      self._start_marcador()
 
   def _start_unir(self):
     if len(self._arquivos_unir) < 2:
@@ -338,21 +486,10 @@ class AbaPdf(ctk.CTkFrame):
     self._worker = threading.Thread(target=worker, daemon=True)
     self._worker.start()
 
-  def _start_dividir(self):
-    origem = Path(self.pdf_path.get().strip())
-    if not origem.is_file():
-      messagebox.showerror("Erro", "Arquivo PDF não encontrado.")
-      self._restaurar_botao("Dividir em Páginas")
-      return
-    pasta = origem.parent / "paginas_pdf"
-    self.log_pdf.insert(
-        "end", f">>> Dividindo {origem.name} -> {pasta}\n"
-    )
-    self.log_pdf.see("end")
-
+  def _worker_blocos(self, fn, origem, pasta, rotulo):
     def worker():
       try:
-        resultados = dividir_pdf(origem, pasta)
+        resultados = fn(origem, pasta)
         for i, res in enumerate(resultados, 1):
           self._post_ui(self._pdf_item_divisao, res)
           self._post_ui(
@@ -361,10 +498,150 @@ class AbaPdf(ctk.CTkFrame):
           )
         self._post_ui(self._pdf_fim_divisao, resultados, pasta)
       except Exception as e:
-        self._post_ui(self._pdf_erro, e, "Dividir em Páginas")
+        self._post_ui(self._pdf_erro, e, rotulo)
 
     self._worker = threading.Thread(target=worker, daemon=True)
     self._worker.start()
+
+  def _start_dividir(self):
+    origem = Path(self.pdf_path.get().strip())
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo PDF não encontrado.")
+      self._restaurar_botao(self._rotulo())
+      return
+    pasta = origem.parent / "paginas_pdf"
+    self.log_pdf.insert(
+        "end", f">>> Dividindo {origem.name} -> {pasta}\n"
+    )
+    self.log_pdf.see("end")
+    self._worker_blocos(dividir_pdf, origem, pasta, self._rotulo())
+
+  def _start_rotacionar(self):
+    origem = Path(self.pdf_path.get().strip())
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo PDF não encontrado.")
+      self._restaurar_botao(self._rotulo())
+      return
+    angulo = _ANGULOS[self.rot_angulo.get()]
+    texto = self.rot_paginas.get().strip()
+    try:
+      paginas = _parse_paginas(texto) if texto else None
+    except ValueError:
+      messagebox.showerror(
+          "Erro", "Formato de páginas inválido. Use ex: 1, 3-5"
+      )
+      self._restaurar_botao(self._rotulo())
+      return
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "rotacionado", ".pdf"
+    )
+    alvo = (
+        f"páginas {paginas}" if paginas else "todas as páginas"
+    )
+    self.log_pdf.insert(
+        "end", f">>> Rotacionando {origem.name} em {angulo}° ({alvo})\n"
+    )
+    self.log_pdf.see("end")
+    rotulo = self._rotulo()
+
+    def worker():
+      try:
+        res = rotacionar_pdf(origem, angulo, paginas, destino)
+        self._post_ui(self._pdf_concluir, res)
+      except Exception as e:
+        self._post_ui(self._pdf_erro, e, rotulo)
+
+    self._worker = threading.Thread(target=worker, daemon=True)
+    self._worker.start()
+
+  def _start_mix(self):
+    arq_a = Path(self.mix_a.get().strip())
+    arq_b = Path(self.mix_b.get().strip())
+    if not arq_a.is_file() or not arq_b.is_file():
+      messagebox.showerror(
+          "Erro", "Selecione os arquivos A e B válidos."
+      )
+      self._restaurar_botao(self._rotulo())
+      return
+    inverter = bool(self.mix_inv.get())
+    destino = gerar_destino_unico(arq_a.parent, "mix", "pdf", ".pdf")
+    modo = "B invertido" if inverter else "ordem direta"
+    self.log_pdf.insert(
+        "end",
+        f">>> Intercalando {arq_a.name} + {arq_b.name} ({modo})\n",
+    )
+    self.log_pdf.see("end")
+    rotulo = self._rotulo()
+
+    def worker():
+      try:
+        res = mix_alternado_pdf(arq_a, arq_b, inverter, destino)
+        self._post_ui(self._pdf_concluir, res)
+      except Exception as e:
+        self._post_ui(self._pdf_erro, e, rotulo)
+
+    self._worker = threading.Thread(target=worker, daemon=True)
+    self._worker.start()
+
+  def _start_tamanho(self):
+    origem = Path(self.pdf_path.get().strip())
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo PDF não encontrado.")
+      self._restaurar_botao(self._rotulo())
+      return
+    try:
+      teto = float(self.tam_mb.get().strip() or "10")
+      if teto <= 0:
+        raise ValueError
+    except ValueError:
+      messagebox.showerror(
+          "Erro", "Tamanho máximo deve ser um número > 0."
+      )
+      self._restaurar_botao(self._rotulo())
+      return
+    pasta = origem.parent / "blocos_pdf"
+    self.log_pdf.insert(
+        "end",
+        f">>> Fatiando {origem.name} em blocos de até"
+        f" {teto:g} MB -> {pasta}\n",
+    )
+    self.log_pdf.see("end")
+    self._worker_blocos(
+        lambda o, p: dividir_por_tamanho_pdf(o, teto, p),
+        origem,
+        pasta,
+        self._rotulo(),
+    )
+
+  def _start_marcador(self):
+    origem = Path(self.pdf_path.get().strip())
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo PDF não encontrado.")
+      self._restaurar_botao(self._rotulo())
+      return
+    try:
+      nivel = int(self.marc_nivel.get().strip() or "1")
+      if nivel < 1:
+        raise ValueError
+    except ValueError:
+      messagebox.showerror(
+          "Erro", "Nível de marcador deve ser inteiro >= 1."
+      )
+      self._restaurar_botao(self._rotulo())
+      return
+    pasta = origem.parent / "secoes_pdf"
+    self.log_pdf.insert(
+        "end",
+        f">>> Fatiando {origem.name} pelos marcadores"
+        f" (nível {nivel}) -> {pasta}\n",
+    )
+    self.log_pdf.see("end")
+    self._worker_blocos(
+        lambda o, p: dividir_por_marcadores_pdf(o, nivel, p),
+        origem,
+        pasta,
+        self._rotulo(),
+    )
 
   def _pdf_progresso(self, pct):
     self.prog_pdf.set(min(100.0, max(0.0, pct)) / 100.0)
@@ -389,7 +666,7 @@ class AbaPdf(ctk.CTkFrame):
       self._ultimo_destino = pasta
     self.log_pdf.see("end")
     persistir_log(self.log_pdf, "pdf")
-    self._restaurar_botao("Dividir em Páginas")
+    self._restaurar_botao(self._rotulo())
 
   def _pdf_concluir(self, res):
     if res.sucesso:
@@ -407,8 +684,7 @@ class AbaPdf(ctk.CTkFrame):
       )
     self.log_pdf.see("end")
     persistir_log(self.log_pdf, "pdf")
-    texto = "Unir Documentos" if self.acao.get() == "Unir PDFs" else "Extrair"
-    self._restaurar_botao(texto)
+    self._restaurar_botao(self._rotulo())
 
   def _pdf_erro(self, erro, rotulo):
     self.prog_pdf.set(0)

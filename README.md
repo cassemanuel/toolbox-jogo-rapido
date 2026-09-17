@@ -5,7 +5,7 @@ Toolkit multimídia desktop para Windows que automatiza três domínios:
 - **Compressão de Vídeo com teto de tamanho** — recodifica via FFmpeg (H.264/MP4 ou VP9/WebM) calculando o bitrate alvo a partir da duração, para caber em ~25 MB. Telemetria de hardware (CPU/RAM/GPU/VRAM), progresso contínuo via `-progress pipe:1` e cancelamento gracioso.
 - **Otimização de Imagens em lote** — redimensionamento e recompressão JPEG via Pillow com processamento paralelo, correção de orientação EXIF e preservação do perfil de cor ICC.
 - **Calculadora de Tempo** — port do utilitário legado em C (`programa.c`): conversões HH:MM:SS e tempo ajustado por fator de playback.
-- **Manipulação de PDFs** — união, extração de páginas e divisão via `pypdf` (CLI `pdf unir|extrair|dividir`).
+- **Manipulação de PDFs** — união, extração, divisão, rotação, mix frente/verso e fatiamento por tamanho ou marcadores via `pypdf` (CLI `pdf unir|extrair|dividir|rotacionar|mix|dividir-tamanho|dividir-marcadores`).
 
 ## Requisitos
 
@@ -27,7 +27,9 @@ dist\MediaToolkit.exe
 python app.py
 ```
 
-A interface (`customtkinter`) oferece cinco abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs (unir vários documentos, extrair páginas por lista `1, 3-5, 8` ou dividir cada página em `paginas_pdf/`) e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
+A interface (`customtkinter`) oferece cinco abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
+
+A aba **Manipulação de PDFs** (estilo PDFsam) concentra 7 modos em um seletor: **Unir** (lista ordenada de PDFs), **Extrair** (folhas por lista `1, 3-5, 8`), **Dividir** (cada página em `paginas_pdf/`), **Rotacionar** (90/180/270° em todas ou em páginas específicas), **Mix Alternado** (intercala frentes e versos, com opção de inverter B para escaneamento reverso), **Por Tamanho** (fatia em blocos de até N MB em `blocos_pdf/`) e **Por Marcador** (fatia pelo sumário/outline em `secoes_pdf/`, com aviso quando o documento não tem marcadores). O campo de arquivo exibe a contagem de folhas físicas em tempo real.
 
 ## Como Executar — Linha de Comando (CLI)
 
