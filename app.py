@@ -32,6 +32,7 @@ class App(ctk.CTk):
     self._fila_ui: queue.Queue = queue.Queue()
     self._worker_video: threading.Thread | None = None
     self._worker_img: threading.Thread | None = None
+    self._cancel_video = threading.Event()
 
     self.tabview = ctk.CTkTabview(self, corner_radius=10)
     self.tabview.pack(fill="both", expand=True, padx=20, pady=15)
@@ -155,6 +156,10 @@ class App(ctk.CTk):
     )
     self.btn_v_start.pack(fill="x", padx=15, pady=5)
 
+    self.prog_v = ctk.CTkProgressBar(self.tab_video, corner_radius=8)
+    self.prog_v.set(0)
+    self.prog_v.pack(fill="x", padx=15, pady=(0, 5))
+
     self.log_v = ctk.CTkTextbox(
         self.tab_video,
         font=ctk.CTkFont(family="Consolas", size=11),
@@ -186,7 +191,14 @@ class App(ctk.CTk):
     ext = self.v_format.get()
     destino = origem.parent / f"{origem.stem}_comprimido{ext}"
 
-    self.btn_v_start.configure(state="disabled", text="Processando Vídeo...")
+    self._cancel_video.clear()
+    self.prog_v.set(0)
+    self.btn_v_start.configure(
+        text="Cancelar Compressão",
+        fg_color="#8B0000",
+        hover_color="#550000",
+        command=self._v_cancel,
+    )
     self.log_v.insert(
         "end",
         f">>> Processando: {origem.name}\n"
@@ -202,6 +214,8 @@ class App(ctk.CTk):
             destino=destino,
             tamanho_alvo_mb=tamanho_alvo,
             audio_bitrate_kbps=96,
+            progress_hook=lambda pct: self._post_ui(self._v_progresso, pct),
+            cancel_event=self._cancel_video,
         )
         tempo = time.perf_counter() - t_inicio
         self._post_ui(self._v_concluir, res, tempo)
@@ -210,6 +224,22 @@ class App(ctk.CTk):
 
     self._worker_video = threading.Thread(target=worker, daemon=True)
     self._worker_video.start()
+
+  def _v_cancel(self):
+    self._cancel_video.set()
+    self.btn_v_start.configure(state="disabled", text="Cancelando...")
+
+  def _v_progresso(self, pct):
+    self.prog_v.set(min(100.0, max(0.0, pct)) / 100.0)
+
+  def _v_restaurar_botao(self):
+    self.btn_v_start.configure(
+        state="normal",
+        text="Iniciar Compressão de Vídeo",
+        fg_color="#1f6aa5",
+        hover_color="#144870",
+        command=self._v_start,
+    )
 
   def _v_concluir(self, res, tempo_cronometrado):
     tempo_exibicao = (
@@ -254,17 +284,16 @@ class App(ctk.CTk):
     if res.aviso:
       self.log_v.insert("end", f" [AVISO] {res.aviso}\n{'-'*55}\n")
 
+    if not res.sucesso:
+      self.prog_v.set(0)
     self.log_v.see("end")
-    self.btn_v_start.configure(
-        state="normal", text="Iniciar Compressão de Vídeo"
-    )
+    self._v_restaurar_botao()
 
   def _v_erro(self, erro):
     self.log_v.insert("end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n")
     self.log_v.see("end")
-    self.btn_v_start.configure(
-        state="normal", text="Iniciar Compressão de Vídeo"
-    )
+    self.prog_v.set(0)
+    self._v_restaurar_botao()
 
   # -------------------------------------------------------------
   # ABA: IMAGEM

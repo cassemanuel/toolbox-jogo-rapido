@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 import psutil
 
 from core.calculadora import (
@@ -192,6 +192,8 @@ def comprimir_video(
     destino: Path,
     tamanho_alvo_mb: float = 25.0,
     audio_bitrate_kbps: int = 96,
+    progress_hook: Optional[Callable[[float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> ResultadoCompressaoVideo:
     telemetria_vazia = EstatisticasHardware(0, 0, 0, 0, 0, 0, 0, "N/A")
     t_inicio = time.perf_counter()
@@ -270,6 +272,8 @@ def comprimir_video(
             "-y",
             "-i",
             str(origem),
+            "-progress",
+            "pipe:1",
             "-vf",
             "scale=-2:min(720\\,trunc(ih/2)*2)",
             "-c:v",
@@ -305,6 +309,8 @@ def comprimir_video(
             "-y",
             "-i",
             str(origem),
+            "-progress",
+            "pipe:1",
             "-vf",
             "scale=-2:min(720\\,trunc(ih/2)*2)",
             "-c:v",
@@ -349,13 +355,65 @@ def comprimir_video(
     try:
         processo = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
             creationflags=_CREATIONFLAGS,
         )
         with _lock_processos:
             _processos_ativos.add(processo)
-        _, stderr = processo.communicate()
+
+        stderr_partes: list[str] = []
+
+        def _ler_stderr() -> None:
+            if processo.stderr is not None:
+                stderr_partes.append(processo.stderr.read())
+
+        def _ler_progresso() -> None:
+            if processo.stdout is None:
+                return
+            for linha in processo.stdout:
+                if cancel_event is not None and cancel_event.is_set():
+                    break
+                chave, _, valor = linha.partition("=")
+                if chave in ("out_time_us", "out_time_ms") and duracao > 0:
+                    try:
+                        decorrido_us = int(valor)
+                    except ValueError:
+                        continue
+                    progresso = min(
+                        100.0, decorrido_us / 1_000_000 / duracao * 100
+                    )
+                    if progress_hook is not None:
+                        try:
+                            progress_hook(progresso)
+                        except Exception:
+                            pass
+
+        t_leitura_out = threading.Thread(target=_ler_progresso, daemon=True)
+        t_leitura_err = threading.Thread(target=_ler_stderr, daemon=True)
+        t_leitura_out.start()
+        t_leitura_err.start()
+
+        while processo.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                _matar_arvore_processo(processo)
+                break
+            time.sleep(0.1)
+
+        try:
+            processo.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _matar_arvore_processo(processo)
+            processo.wait()
+
+        t_leitura_out.join(timeout=2.0)
+        t_leitura_err.join(timeout=2.0)
+        stderr = "".join(stderr_partes)
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("Cancelado pelo usuário.")
 
         if processo.returncode != 0:
             raise subprocess.CalledProcessError(
@@ -363,6 +421,11 @@ def comprimir_video(
             )
 
         telemetria = monitor.parar()
+        if progress_hook is not None:
+            try:
+                progress_hook(100.0)
+            except Exception:
+                pass
         tempo_total = time.perf_counter() - t_inicio
         tamanho_final = destino.stat().st_size
         return ResultadoCompressaoVideo(

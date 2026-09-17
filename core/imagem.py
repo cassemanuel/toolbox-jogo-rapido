@@ -47,6 +47,7 @@ def otimizar_imagem(
         )
     try:
         with Image.open(origem) as img:
+            perfil_icc = img.info.get("icc_profile")
             img = ImageOps.exif_transpose(img)
 
             if img.mode in ("RGBA", "LA") or (
@@ -65,7 +66,10 @@ def otimizar_imagem(
                 )
 
             destino.parent.mkdir(parents=True, exist_ok=True)
-            img.save(destino, "JPEG", optimize=True, quality=qualidade)
+            opcoes_save = {"optimize": True, "quality": qualidade}
+            if perfil_icc:
+                opcoes_save["icc_profile"] = perfil_icc
+            img.save(destino, "JPEG", **opcoes_save)
 
             tamanho_original_bytes = origem.stat().st_size
             tamanho_final_bytes = destino.stat().st_size
