@@ -12,7 +12,15 @@ from core.calculadora import (
     converter_segundos,
 )
 from core.binarios import gerar_destino_unico
-from core.pdf import dividir_pdf, extrair_paginas, unir_pdfs
+from core.pdf import (
+    dividir_pdf,
+    dividir_por_marcadores_pdf,
+    dividir_por_tamanho_pdf,
+    extrair_paginas,
+    mix_alternado_pdf,
+    rotacionar_pdf,
+    unir_pdfs,
+)
 from core.imagem import (
     FORMATOS_CONVERSAO,
     FORMATOS_SAIDA,
@@ -226,6 +234,86 @@ def tratar_pdf_dividir(args: argparse.Namespace) -> None:
   print(f"[OK] {sucessos}/{len(resultados)} página(s) em {pasta}")
 
 
+def _imprimir_blocos_pdf(resultados, pasta: Path) -> None:
+  sucessos = sum(1 for r in resultados if r.sucesso)
+  for r in resultados:
+    if r.sucesso:
+      print(
+          f"  [OK] {r.caminho_destino.name}"
+          f" ({r.total_paginas} página(s))"
+      )
+    else:
+      print(f"  [ERRO] {r.mensagem_erro}")
+  if sucessos == 0:
+    sys.exit(1)
+  print(f"[OK] {sucessos} bloco(s) gerado(s) em {pasta}")
+
+
+def tratar_pdf_rotacionar(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  paginas = None
+  if args.paginas:
+    try:
+      paginas = [
+          int(p.strip()) for p in args.paginas.split(",") if p.strip()
+      ]
+    except ValueError:
+      print("Erro: --paginas deve ser uma lista numérica (ex: 1,3).")
+      sys.exit(1)
+  if args.destino:
+    destino = Path(args.destino)
+  else:
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "rotacionado", ".pdf"
+    )
+  res = rotacionar_pdf(origem, args.angulo, paginas, destino)
+  if not res.sucesso:
+    print(f"[FALHA] {res.mensagem_erro}")
+    sys.exit(1)
+  print(
+      f"[OK] {res.caminho_destino}"
+      f" ({res.total_paginas} página(s), {args.angulo}°)"
+  )
+
+
+def tratar_pdf_mix(args: argparse.Namespace) -> None:
+  arquivo_a = Path(args.arquivo_a)
+  arquivo_b = Path(args.arquivo_b)
+  if args.destino:
+    destino = Path(args.destino)
+  else:
+    destino = gerar_destino_unico(
+        arquivo_a.parent, "mix", "pdf", ".pdf"
+    )
+  res = mix_alternado_pdf(arquivo_a, arquivo_b, args.inverter_b, destino)
+  if not res.sucesso:
+    print(f"[FALHA] {res.mensagem_erro}")
+    sys.exit(1)
+  modo = "B invertido" if args.inverter_b else "ordem direta"
+  print(
+      f"[OK] {res.caminho_destino}"
+      f" ({res.total_paginas} página(s), {modo})"
+  )
+
+
+def tratar_pdf_dividir_tamanho(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  pasta = (
+      Path(args.destino) if args.destino else origem.parent / "blocos"
+  )
+  resultados = dividir_por_tamanho_pdf(origem, args.teto_mb, pasta)
+  _imprimir_blocos_pdf(resultados, pasta)
+
+
+def tratar_pdf_dividir_marcadores(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  pasta = (
+      Path(args.destino) if args.destino else origem.parent / "secoes"
+  )
+  resultados = dividir_por_marcadores_pdf(origem, args.nivel, pasta)
+  _imprimir_blocos_pdf(resultados, pasta)
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(
       description="Toolkit Unificado de Automação de Mídia e Cálculos"
@@ -343,6 +431,56 @@ def main() -> None:
   p_div.add_argument("--origem", type=str, required=True)
   p_div.add_argument("--destino", type=str, help="Pasta de saída")
   p_div.set_defaults(func=tratar_pdf_dividir)
+
+  p_rot = pdf_sub.add_parser(
+      "rotacionar", help="Rotaciona páginas em 90/180/270°"
+  )
+  p_rot.add_argument("--origem", type=str, required=True)
+  p_rot.add_argument(
+      "--angulo",
+      type=int,
+      required=True,
+      choices=[90, 180, 270],
+      help="Ângulo de rotação",
+  )
+  p_rot.add_argument(
+      "--paginas", type=str, help="Páginas 1-based (ex: 1,3); vazio = todas"
+  )
+  p_rot.add_argument("--destino", type=str, help="PDF de saída")
+  p_rot.set_defaults(func=tratar_pdf_rotacionar)
+
+  p_mix = pdf_sub.add_parser(
+      "mix", help="Intercala páginas de dois PDFs (frente/verso)"
+  )
+  p_mix.add_argument("--arquivo-a", type=str, required=True)
+  p_mix.add_argument("--arquivo-b", type=str, required=True)
+  p_mix.add_argument(
+      "--inverter-b",
+      action="store_true",
+      help="Intercala B na ordem inversa (versos escaneados ao contrário)",
+  )
+  p_mix.add_argument("--destino", type=str, help="PDF de saída")
+  p_mix.set_defaults(func=tratar_pdf_mix)
+
+  p_dtam = pdf_sub.add_parser(
+      "dividir-tamanho", help="Fatia o PDF em blocos de até N MB"
+  )
+  p_dtam.add_argument("--origem", type=str, required=True)
+  p_dtam.add_argument(
+      "--teto-mb", type=float, required=True, help="Teto por bloco em MB"
+  )
+  p_dtam.add_argument("--destino", type=str, help="Pasta de saída")
+  p_dtam.set_defaults(func=tratar_pdf_dividir_tamanho)
+
+  p_dmarc = pdf_sub.add_parser(
+      "dividir-marcadores", help="Fatia o PDF pelos marcadores (outline)"
+  )
+  p_dmarc.add_argument("--origem", type=str, required=True)
+  p_dmarc.add_argument(
+      "--nivel", type=int, default=1, help="Nível do sumário (default 1)"
+  )
+  p_dmarc.add_argument("--destino", type=str, help="Pasta de saída")
+  p_dmarc.set_defaults(func=tratar_pdf_dividir_marcadores)
 
   # Subcomando vasco
   p_vasco = subparsers.add_parser("vasco", help="Exibe a Cruz de Malta legada")

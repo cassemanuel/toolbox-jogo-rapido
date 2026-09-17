@@ -77,11 +77,19 @@ python cli.py converter --origem video.mov --destino saida.mp4
 python cli.py pdf unir --arquivos doc1.pdf doc2.pdf [--destino unificado.pdf]
 python cli.py pdf extrair --origem doc.pdf --paginas 1,3,5 [--destino extraido.pdf]
 python cli.py pdf dividir --origem doc.pdf [--destino pasta/]
+python cli.py pdf rotacionar --origem doc.pdf --angulo 90 [--paginas 1,3] [--destino saida.pdf]
+python cli.py pdf mix --arquivo-a frentes.pdf --arquivo-b versos.pdf [--inverter-b] [--destino mix.pdf]
+python cli.py pdf dividir-tamanho --origem doc.pdf --teto-mb 10 [--destino pasta/]
+python cli.py pdf dividir-marcadores --origem doc.pdf [--nivel 1] [--destino pasta/]
 ```
 
 - **unir**: mescla os PDFs na ordem informada.
 - **extrair**: páginas em índice 1-based, validadas contra o total do documento.
 - **dividir**: salva cada página em arquivo próprio (default: pasta `paginas/` ao lado da origem).
+- **rotacionar**: gira todas as páginas (ou só as listadas em `--paginas`) em 90/180/270°.
+- **mix**: intercala A1,B1,A2,B2…; com `--inverter-b` usa B na ordem reversa (versos escaneados ao contrário). Documentos de tamanhos diferentes têm as folhas excedentes anexadas ao final.
+- **dividir-tamanho**: fatia em blocos de até `--teto-mb` MB (default: pasta `blocos/`); páginas que sozinhas excedem o teto viram um bloco próprio.
+- **dividir-marcadores**: fatia nos pontos de quebra do sumário/outline no `--nivel` indicado (default: pasta `secoes/`); falha com mensagem clara se o documento não tiver marcadores.
 - Destinos omitidos recebem timestamp automático (`{stem}_{operacao}_{AAAAMMDD_HHMMSS}.pdf`) — nunca sobrescrevem.
 
 ### Calculadora de tempo
