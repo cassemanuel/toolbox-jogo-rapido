@@ -20,6 +20,7 @@ dist/
 
 # ---- Artefatos do projeto ----
 Arquivos-de-Teste/
+logs/
 *.log
 
 # ---- IDEs ----

@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
+from core.logger import salvar_log, ultimo_resumo
 from core.imagem import (
     FORMATOS_CONVERSAO,
     FORMATOS_SAIDA,
@@ -31,6 +32,11 @@ _FORMATOS_VIDEO_AUDIO = [
     ".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".aac",
 ]
 _FORMATOS_IMAGEM_CONVERSAO = list(FORMATOS_CONVERSAO.keys())
+_EXT_MIDIA_ENTRADA = {
+    ".mp4", ".mkv", ".avi", ".mov", ".webm",
+    ".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a",
+}
+_EXT_IMAGEM_ENTRADA = set(FORMATOS_CONVERSAO.keys())
 
 
 class App(ctk.CTk):
@@ -67,10 +73,20 @@ class App(ctk.CTk):
     self._setup_conv_tab()
     self._setup_calc_tab()
 
+    resumo = ultimo_resumo()
+    for caixa in (self.log_v, self.log_i, self.log_conv):
+      caixa.insert("end", f">>> Última execução: {resumo}\n{'-'*55}\n")
+
     self.after(75, self._drenar_fila_ui)
 
   def _post_ui(self, fn, *args):
     self._fila_ui.put((fn, args))
+
+  def _persistir_log(self, caixa: ctk.CTkTextbox, origem: str):
+    try:
+      salvar_log(caixa.get("1.0", "end").strip(), origem=origem)
+    except OSError:
+      pass
 
   def _drenar_fila_ui(self):
     try:
@@ -397,12 +413,14 @@ class App(ctk.CTk):
     if not res.sucesso:
       self.prog_v.set(0)
     self.log_v.see("end")
+    self._persistir_log(self.log_v, "video")
     self._v_restaurar_botao()
 
   def _v_erro(self, erro):
     self.log_v.insert("end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n")
     self.log_v.see("end")
     self.prog_v.set(0)
+    self._persistir_log(self.log_v, "video")
     self._v_restaurar_botao()
 
   # -------------------------------------------------------------
@@ -625,6 +643,7 @@ class App(ctk.CTk):
     if res.sucesso:
       self._ultimo_destino_img = res.caminho_destino
     self.log_i.see("end")
+    self._persistir_log(self.log_i, "imagem")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
     )
@@ -659,6 +678,7 @@ class App(ctk.CTk):
     if sucessos > 0:
       self._ultimo_destino_img = destino
     self.log_i.see("end")
+    self._persistir_log(self.log_i, "imagem")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
     )
@@ -666,6 +686,7 @@ class App(ctk.CTk):
   def _i_erro(self, erro):
     self.log_i.insert("end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n")
     self.log_i.see("end")
+    self._persistir_log(self.log_i, "imagem")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
     )
@@ -695,7 +716,21 @@ class App(ctk.CTk):
 
     ctk.CTkLabel(
         card,
-        text="Arquivo de Origem:",
+        text="Escopo:",
+        font=ctk.CTkFont(weight="bold"),
+    ).grid(row=0, column=2, padx=(12, 4), pady=10, sticky="w")
+
+    self.conv_modo = ctk.CTkSegmentedButton(
+        card,
+        values=["Arquivo Único", "Pasta em Lote"],
+        command=self._conv_modo_changed,
+    )
+    self.conv_modo.set("Arquivo Único")
+    self.conv_modo.grid(row=0, column=3, padx=8, pady=10, sticky="w")
+
+    ctk.CTkLabel(
+        card,
+        text="Origem:",
         font=ctk.CTkFont(weight="bold"),
     ).grid(row=1, column=0, padx=12, pady=10, sticky="w")
 
@@ -704,15 +739,16 @@ class App(ctk.CTk):
         card,
         textvariable=self.conv_file,
         placeholder_text="Selecione o arquivo a converter...",
-    ).grid(row=1, column=1, padx=8, pady=10, sticky="ew")
+    ).grid(row=1, column=1, columnspan=2, padx=8, pady=10, sticky="ew")
 
-    ctk.CTkButton(
+    self.btn_conv_busca = ctk.CTkButton(
         card, text="Buscar Arquivo", width=110, command=self._conv_select
-    ).grid(row=1, column=2, padx=12, pady=10)
+    )
+    self.btn_conv_busca.grid(row=1, column=3, padx=12, pady=10)
 
     f_sub = ctk.CTkFrame(card, fg_color="transparent")
     f_sub.grid(
-        row=2, column=0, columnspan=3, padx=12, pady=(0, 10), sticky="w"
+        row=2, column=0, columnspan=4, padx=12, pady=(0, 10), sticky="w"
     )
 
     ctk.CTkLabel(f_sub, text="Formato de Destino:").pack(side="left")
@@ -765,8 +801,17 @@ class App(ctk.CTk):
     self.conv_formato.configure(values=valores)
     self.conv_formato.set(valores[0])
 
+  def _conv_modo_changed(self, modo):
+    em_lote = modo == "Pasta em Lote"
+    self.btn_conv_busca.configure(
+        text="Buscar Pasta" if em_lote else "Buscar Arquivo"
+    )
+    self.conv_file.set("")
+
   def _conv_select(self):
-    if self.conv_tipo.get() == "Imagem":
+    if self.conv_modo.get() == "Pasta em Lote":
+      caminho = filedialog.askdirectory()
+    elif self.conv_tipo.get() == "Imagem":
       caminho = filedialog.askopenfilename(
           filetypes=[
               ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.ico")
@@ -787,16 +832,84 @@ class App(ctk.CTk):
 
   def _conv_start(self):
     origem = Path(self.conv_file.get().strip())
-    if not origem.is_file():
-      messagebox.showerror("Erro", "Arquivo de origem não encontrado.")
-      return
-
+    em_lote = self.conv_modo.get() == "Pasta em Lote"
     ext_destino = self.conv_formato.get()
-    destino = origem.parent / f"{origem.stem}_convertido{ext_destino}"
     tipo = self.conv_tipo.get()
 
     self.prog_conv.set(0)
     self.btn_conv_start.configure(state="disabled", text="Convertendo...")
+
+    if em_lote:
+      if not origem.is_dir():
+        messagebox.showerror("Erro", "Pasta de origem não encontrada.")
+        self.btn_conv_start.configure(
+            state="normal", text="Iniciar Conversão"
+        )
+        return
+      extensoes = (
+          _EXT_IMAGEM_ENTRADA if tipo == "Imagem" else _EXT_MIDIA_ENTRADA
+      )
+      arquivos = sorted(
+          p for p in origem.iterdir()
+          if p.is_file() and p.suffix.lower() in extensoes
+          and p.suffix.lower() != ext_destino.lower()
+      )
+      if not arquivos:
+        messagebox.showerror(
+            "Erro", "Nenhum arquivo compatível encontrado na pasta."
+        )
+        self.btn_conv_start.configure(
+            state="normal", text="Iniciar Conversão"
+        )
+        return
+      pasta_saida = origem / "convertidos"
+      pasta_saida.mkdir(parents=True, exist_ok=True)
+      self.log_conv.insert(
+          "end",
+          f">>> Lote: {len(arquivos)} arquivo(s) -> {pasta_saida}\n",
+      )
+      self.log_conv.see("end")
+
+      def worker_lote():
+        try:
+          sucessos = 0
+          for i, arq in enumerate(arquivos, 1):
+            destino = pasta_saida / f"{arq.stem}{ext_destino}"
+            self._post_ui(
+                self._conv_log_lote, i, len(arquivos), arq.name
+            )
+            if tipo == "Imagem":
+              res = converter_imagem(arq, destino)
+            else:
+              res = converter_midia(
+                  arq, destino, audio_bitrate_kbps=192
+              )
+            self._post_ui(self._conv_item_lote, res)
+            if res.sucesso:
+              sucessos += 1
+            self._post_ui(
+                self._conv_progresso, i / len(arquivos) * 100.0
+            )
+          self._post_ui(
+              self._conv_fim_lote, len(arquivos), sucessos, pasta_saida
+          )
+        except Exception as e:
+          self._post_ui(self._conv_erro, e)
+
+      self._worker_conv = threading.Thread(
+          target=worker_lote, daemon=True
+      )
+      self._worker_conv.start()
+      return
+
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo de origem não encontrado.")
+      self.btn_conv_start.configure(
+          state="normal", text="Iniciar Conversão"
+      )
+      return
+
+    destino = origem.parent / f"{origem.stem}_convertido{ext_destino}"
     self.log_conv.insert(
         "end", f">>> Convertendo: {origem.name} -> {destino.name}\n"
     )
@@ -823,6 +936,38 @@ class App(ctk.CTk):
     self._worker_conv = threading.Thread(target=worker, daemon=True)
     self._worker_conv.start()
 
+  def _conv_log_lote(self, indice, total, nome):
+    self.log_conv.insert(
+        "end", f"Processando {indice}/{total}: {nome}...\n"
+    )
+    self.log_conv.see("end")
+
+  def _conv_item_lote(self, res):
+    if res.sucesso:
+      final_kb = res.tamanho_final_bytes / 1024
+      self.log_conv.insert(
+          "end",
+          f"   [OK] {res.caminho_destino.name} ({final_kb:.1f} KB)\n",
+      )
+    else:
+      self.log_conv.insert(
+          "end",
+          f"   [ERRO] {res.caminho_origem.name}: {res.mensagem_erro}\n",
+      )
+    self.log_conv.see("end")
+
+  def _conv_fim_lote(self, total, sucessos, pasta_saida):
+    self.log_conv.insert(
+        "end",
+        f"\n{'='*55}\n Lote concluído: {sucessos}/{total} convertidos\n"
+        f"{'='*55}\n",
+    )
+    if sucessos > 0:
+      self._ultimo_destino_conv = pasta_saida
+    self.log_conv.see("end")
+    self._persistir_log(self.log_conv, "conversao")
+    self.btn_conv_start.configure(state="normal", text="Iniciar Conversão")
+
   def _conv_progresso(self, pct):
     self.prog_conv.set(min(100.0, max(0.0, pct)) / 100.0)
 
@@ -843,6 +988,7 @@ class App(ctk.CTk):
           "end", f"[FALHA] {res.mensagem_erro}\n{'-'*55}\n"
       )
     self.log_conv.see("end")
+    self._persistir_log(self.log_conv, "conversao")
     self.btn_conv_start.configure(state="normal", text="Iniciar Conversão")
 
   def _conv_erro(self, erro):
@@ -851,6 +997,7 @@ class App(ctk.CTk):
         "end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n"
     )
     self.log_conv.see("end")
+    self._persistir_log(self.log_conv, "conversao")
     self.btn_conv_start.configure(state="normal", text="Iniciar Conversão")
 
   # -------------------------------------------------------------
