@@ -251,6 +251,9 @@ class App(ctk.CTk):
           f" {tempo_exibicao:.2f} s\nMotivo: {res.mensagem_erro}\n{'-'*55}\n",
       )
 
+    if res.aviso:
+      self.log_v.insert("end", f" [AVISO] {res.aviso}\n{'-'*55}\n")
+
     self.log_v.see("end")
     self.btn_v_start.configure(
         state="normal", text="Iniciar Compressão de Vídeo"
@@ -355,6 +358,12 @@ class App(ctk.CTk):
     except ValueError:
       messagebox.showerror(
           "Erro", "Dimensão ou qualidade deve ser um número inteiro."
+      )
+      return
+
+    if not 1 <= qualidade <= 100 or max_dim <= 0:
+      messagebox.showerror(
+          "Erro", "Qualidade deve estar entre 1-100 e a dimensão > 0."
       )
       return
 

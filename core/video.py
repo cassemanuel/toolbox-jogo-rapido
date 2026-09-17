@@ -12,7 +12,11 @@ import time
 from typing import Optional
 import psutil
 
-from core.calculadora import calcular_bitrate_alvo_kbps
+from core.calculadora import (
+    BITRATE_MAX_KBPS,
+    BITRATE_MIN_KBPS,
+    calcular_bitrate_alvo_kbps,
+)
 
 _CREATIONFLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -50,7 +54,7 @@ def cancelar_processos_ativos() -> None:
                 pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class EstatisticasHardware:
     cpu_media: float
     cpu_pico: float
@@ -73,6 +77,7 @@ class MonitorHardware:
         self._gpu_samples: list[float] = []
         self._vram_samples: list[float] = []
         self._modelo_gpu: str = self._obter_modelo_gpu()
+        self._gpu_disponivel: bool = self._modelo_gpu != "N/A"
 
     def _obter_modelo_gpu(self) -> str:
         try:
@@ -85,6 +90,8 @@ class MonitorHardware:
             return "N/A"
 
     def _obter_telemetria_gpu(self) -> tuple[float, float]:
+        if not self._gpu_disponivel:
+            return 0.0, 0.0
         try:
             cmd = [
                 "nvidia-smi",
@@ -142,7 +149,7 @@ class MonitorHardware:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ResultadoCompressaoVideo:
     caminho_origem: Path
     caminho_destino: Path
@@ -154,6 +161,7 @@ class ResultadoCompressaoVideo:
     sucesso: bool
     tempo_processamento_s: float = 0.0
     mensagem_erro: str = ""
+    aviso: str = ""
 
 
 def obter_duracao_video(origem: Path) -> float:
@@ -187,6 +195,7 @@ def comprimir_video(
 ) -> ResultadoCompressaoVideo:
     telemetria_vazia = EstatisticasHardware(0, 0, 0, 0, 0, 0, 0, "N/A")
     t_inicio = time.perf_counter()
+    aviso = ""
 
     if not origem.is_file():
         return ResultadoCompressaoVideo(
@@ -208,6 +217,20 @@ def comprimir_video(
         bitrate_v = calcular_bitrate_alvo_kbps(
             duracao, tamanho_alvo_mb, audio_bitrate_kbps
         )
+        bitrate_ideal = int(
+            tamanho_alvo_mb * 8192 / duracao - audio_bitrate_kbps
+        )
+        if bitrate_ideal < BITRATE_MIN_KBPS:
+            aviso = (
+                f"Bitrate ideal {bitrate_ideal} kbps abaixo do piso "
+                f"executável ({BITRATE_MIN_KBPS} kbps): alvo de "
+                f"{tamanho_alvo_mb} MB inatingível para esta duração."
+            )
+        elif bitrate_ideal > BITRATE_MAX_KBPS:
+            aviso = (
+                f"Bitrate ideal {bitrate_ideal} kbps acima do teto "
+                f"({BITRATE_MAX_KBPS} kbps): limitado por segurança."
+            )
     except Exception as e:
         return ResultadoCompressaoVideo(
             caminho_origem=origem,
@@ -241,13 +264,18 @@ def comprimir_video(
     if destino.suffix.lower() == ".webm":
         cmd = [
             "ffmpeg",
+            "-nostats",
+            "-v",
+            "error",
             "-y",
             "-i",
             str(origem),
             "-vf",
-            "scale=-2:720",
+            "scale=-2:min(720\\,trunc(ih/2)*2)",
             "-c:v",
             "libvpx-vp9",
+            "-pix_fmt",
+            "yuv420p",
             "-b:v",
             f"{bitrate_v}k",
             "-minrate",
@@ -271,15 +299,20 @@ def comprimir_video(
     elif destino.suffix.lower() == ".mp4":
         cmd = [
             "ffmpeg",
+            "-nostats",
+            "-v",
+            "error",
             "-y",
             "-i",
             str(origem),
             "-vf",
-            "scale=-2:720",
+            "scale=-2:min(720\\,trunc(ih/2)*2)",
             "-c:v",
             "libx264",
             "-preset",
             "faster",
+            "-pix_fmt",
+            "yuv420p",
             "-b:v",
             f"{bitrate_v}k",
             "-maxrate",
@@ -306,6 +339,7 @@ def comprimir_video(
             sucesso=False,
             tempo_processamento_s=time.perf_counter() - t_inicio,
             mensagem_erro="Formato inválido. Use .mp4 ou .webm",
+            aviso=aviso,
         )
 
     monitor = MonitorHardware()
@@ -341,6 +375,7 @@ def comprimir_video(
             telemetria=telemetria,
             sucesso=True,
             tempo_processamento_s=tempo_total,
+            aviso=aviso,
         )
 
     except (Exception, KeyboardInterrupt) as err:
@@ -363,6 +398,7 @@ def comprimir_video(
             sucesso=False,
             tempo_processamento_s=tempo_total,
             mensagem_erro=str(err),
+            aviso=aviso,
         )
     finally:
         if processo is not None:

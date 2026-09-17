@@ -55,6 +55,10 @@ def converter_horas(horas: int) -> DuracaoFormatada:
   return decompor_segundos(float(horas * 3600))
 
 
+BITRATE_MIN_KBPS = 150
+BITRATE_MAX_KBPS = 50_000
+
+
 def calcular_bitrate_alvo_kbps(
     duracao_segundos: float,
     tamanho_alvo_mb: float = 25.0,
@@ -67,7 +71,7 @@ def calcular_bitrate_alvo_kbps(
   bitrate_total_kbps = tamanho_total_kbits / duracao_segundos
   bitrate_video_kbps = int(bitrate_total_kbps - audio_bitrate_kbps)
 
-  return max(bitrate_video_kbps, 150)
+  return min(max(bitrate_video_kbps, BITRATE_MIN_KBPS), BITRATE_MAX_KBPS)
 
 
 # Arte ASCII da Cruz de Malta (legado do programa.c)

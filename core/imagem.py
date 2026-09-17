@@ -3,13 +3,15 @@ Módulo de otimização de imagens individuais e em lote via Pillow.
 Substitui a implementação monolítica de 'comprimir.py'.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Generator, NamedTuple
+from typing import Generator
 from PIL import Image, ImageOps
 
 
-class ResultadoCompressao(NamedTuple):
+@dataclass(frozen=True)
+class ResultadoCompressao:
     caminho_origem: Path
     caminho_destino: Path
     tamanho_original_bytes: int
@@ -19,6 +21,14 @@ class ResultadoCompressao(NamedTuple):
     mensagem_erro: str = ""
 
 
+def _validar_parametros(max_dimensao: int, qualidade: int) -> str:
+    if not 1 <= qualidade <= 100:
+        return "Qualidade JPEG deve estar no intervalo [1, 100]."
+    if max_dimensao <= 0:
+        return "Dimensão máxima deve ser maior que zero."
+    return ""
+
+
 def otimizar_imagem(
     origem: Path,
     destino: Path,
@@ -26,6 +36,15 @@ def otimizar_imagem(
     qualidade: int = 80,
 ) -> ResultadoCompressao:
     t_inicio = time.perf_counter()
+    if erro := _validar_parametros(max_dimensao, qualidade):
+        return ResultadoCompressao(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro=erro,
+        )
     try:
         with Image.open(origem) as img:
             img = ImageOps.exif_transpose(img)
@@ -80,6 +99,16 @@ def otimizar_lote(
     qualidade: int = 80,
 ) -> Generator[ResultadoCompressao, None, None]:
     extensoes_validas = {".jpg", ".jpeg", ".png", ".webp"}
+    if erro := _validar_parametros(max_dimensao, qualidade):
+        yield ResultadoCompressao(
+            caminho_origem=diretorio_origem,
+            caminho_destino=diretorio_destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro=erro,
+        )
+        return
     try:
         diretorio_destino.mkdir(parents=True, exist_ok=True)
         arquivos = sorted(diretorio_origem.iterdir())

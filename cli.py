@@ -118,6 +118,8 @@ def tratar_video(args: argparse.Namespace) -> None:
   print(f"Uso GPU (Média/Pico): {res.telemetria.gpu_media:.1f}% / {res.telemetria.gpu_pico:.1f}%")
   print(f"VRAM de Pico        : {res.telemetria.vram_pico_mb:.1f} MB")
   print("=" * 50)
+  if res.aviso:
+    print(f"[AVISO] {res.aviso}")
 
 
 def main() -> None:
