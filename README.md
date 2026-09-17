@@ -26,7 +26,7 @@ dist\MediaToolkit.exe
 python app.py
 ```
 
-A interface (`customtkinter`) oferece três abas: Compressão de Vídeo (com barra de progresso e botão de cancelamento), Otimização de Imagens (arquivo único ou pasta) e Calculadora de Tempo.
+A interface (`customtkinter`) oferece quatro abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto) e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
 
 ## Como Executar — Linha de Comando (CLI)
 
@@ -56,6 +56,19 @@ Quando `--origem` é um diretório, o modo lote é ativado automaticamente (proc
 ```
 python cli.py imagem --origem pasta/fotos/ --destino pasta/otimizadas/ --max-dimensao 1920 --qualidade 80 --formato WEBP
 ```
+
+### Conversão direta de formato (sem teto de tamanho)
+
+```
+python cli.py converter --origem video.avi --formato mkv
+python cli.py converter --origem video.mp4 --formato mp3 --audio-bitrate 192
+python cli.py converter --origem foto.png  --formato webp
+python cli.py converter --origem video.mov --destino saida.mp4
+```
+
+- **Vídeo→Vídeo** (`.mp4 .mkv .avi .mov .webm`): transcodificação com preservação de qualidade (CRF), sem compressão por teto de MB.
+- **Vídeo→Áudio** (`.mp3 .wav .aac`): extração com `-vn` (libmp3lame/pcm_s16le/aac).
+- **Imagem→Imagem** (`.png .jpg .webp .ico .bmp`): conversão 1:1 via Pillow sem redimensionamento; alfa preservado quando suportado.
 
 ### Calculadora de tempo
 

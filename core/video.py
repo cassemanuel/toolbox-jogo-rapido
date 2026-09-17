@@ -492,3 +492,242 @@ def comprimir_video(
         if processo is not None:
             with _lock_processos:
                 _processos_ativos.discard(processo)
+
+
+EXTENSOES_VIDEO_CONVERSAO = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+EXTENSOES_AUDIO_CONVERSAO = {".mp3", ".wav", ".aac"}
+_CODEC_AUDIO_CONVERSAO = {".mp3": "libmp3lame", ".aac": "aac", ".wav": "pcm_s16le"}
+
+
+@dataclass(frozen=True)
+class ResultadoConversaoMidia:
+    caminho_origem: Path
+    caminho_destino: Path
+    tamanho_original_bytes: int
+    tamanho_final_bytes: int
+    sucesso: bool
+    tempo_processamento_s: float = 0.0
+    mensagem_erro: str = ""
+
+
+def _montar_comando_conversao(
+    origem: Path, destino: Path, audio_bitrate_kbps: int
+) -> list[str]:
+    ext = destino.suffix.lower()
+    base = [
+        _FFMPEG,
+        "-nostats",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        str(origem),
+        "-progress",
+        "pipe:1",
+    ]
+
+    if ext in EXTENSOES_AUDIO_CONVERSAO:
+        cmd = base + ["-vn", "-c:a", _CODEC_AUDIO_CONVERSAO[ext]]
+        if ext != ".wav":
+            cmd += ["-b:a", f"{audio_bitrate_kbps}k"]
+        cmd.append(str(destino))
+        return cmd
+
+    if ext == ".webm":
+        cmd = base + [
+            "-c:v", "libvpx-vp9",
+            "-crf", "30",
+            "-b:v", "0",
+            "-pix_fmt", "yuv420p",
+            "-row-mt", "1",
+            "-c:a", "libopus",
+            "-b:a", f"{audio_bitrate_kbps}k",
+        ]
+    else:
+        cmd = base + [
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", f"{audio_bitrate_kbps}k",
+        ]
+        if ext == ".mp4":
+            cmd += ["-movflags", "+faststart"]
+    cmd.append(str(destino))
+    return cmd
+
+
+def converter_midia(
+    origem: Path,
+    destino: Path,
+    audio_bitrate_kbps: int = 192,
+    progress_hook: Optional[Callable[[float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> ResultadoConversaoMidia:
+    """Conversão direta de formato (vídeo<->vídeo ou vídeo->áudio), sem
+    teto de tamanho: mantém qualidade via CRF em vez de bitrate calculado.
+    """
+    t_inicio = time.perf_counter()
+
+    if not origem.is_file():
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro="Arquivo de origem não existe.",
+        )
+
+    ext = destino.suffix.lower()
+    if ext not in EXTENSOES_VIDEO_CONVERSAO | EXTENSOES_AUDIO_CONVERSAO:
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro=f"Formato de destino não suportado: {ext}",
+        )
+
+    try:
+        tamanho_original = origem.stat().st_size
+    except OSError as e:
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            tempo_processamento_s=time.perf_counter() - t_inicio,
+            mensagem_erro=f"Falha ao acessar arquivo de origem: {e}",
+        )
+
+    try:
+        duracao = obter_duracao_video(origem)
+    except Exception:
+        duracao = 0.0
+
+    try:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=tamanho_original,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            tempo_processamento_s=time.perf_counter() - t_inicio,
+            mensagem_erro=f"Falha ao criar diretório de saída: {e}",
+        )
+
+    cmd = _montar_comando_conversao(origem, destino, audio_bitrate_kbps)
+    processo: Optional[subprocess.Popen] = None
+
+    try:
+        processo = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            creationflags=_CREATIONFLAGS,
+        )
+        with _lock_processos:
+            _processos_ativos.add(processo)
+
+        stderr_partes: list[str] = []
+
+        def _ler_stderr() -> None:
+            if processo.stderr is not None:
+                stderr_partes.append(processo.stderr.read())
+
+        def _ler_progresso() -> None:
+            if processo.stdout is None:
+                return
+            for linha in processo.stdout:
+                if cancel_event is not None and cancel_event.is_set():
+                    break
+                chave, _, valor = linha.partition("=")
+                if chave in ("out_time_us", "out_time_ms") and duracao > 0:
+                    try:
+                        decorrido_us = int(valor)
+                    except ValueError:
+                        continue
+                    progresso = min(
+                        100.0, decorrido_us / 1_000_000 / duracao * 100
+                    )
+                    if progress_hook is not None:
+                        try:
+                            progress_hook(progresso)
+                        except Exception:
+                            pass
+
+        t_leitura_out = threading.Thread(target=_ler_progresso, daemon=True)
+        t_leitura_err = threading.Thread(target=_ler_stderr, daemon=True)
+        t_leitura_out.start()
+        t_leitura_err.start()
+
+        while processo.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                _matar_arvore_processo(processo)
+                break
+            time.sleep(0.1)
+
+        try:
+            processo.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _matar_arvore_processo(processo)
+            processo.wait()
+
+        t_leitura_out.join(timeout=2.0)
+        t_leitura_err.join(timeout=2.0)
+        stderr = "".join(stderr_partes)
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("Cancelado pelo usuário.")
+
+        if processo.returncode != 0:
+            raise subprocess.CalledProcessError(
+                processo.returncode, cmd, stderr=stderr
+            )
+
+        if progress_hook is not None:
+            try:
+                progress_hook(100.0)
+            except Exception:
+                pass
+
+        tempo_total = time.perf_counter() - t_inicio
+        tamanho_final = destino.stat().st_size
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=tamanho_original,
+            tamanho_final_bytes=tamanho_final,
+            sucesso=True,
+            tempo_processamento_s=tempo_total,
+        )
+
+    except (Exception, KeyboardInterrupt) as err:
+        if processo and processo.poll() is None:
+            _matar_arvore_processo(processo)
+        tempo_total = time.perf_counter() - t_inicio
+        try:
+            destino.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return ResultadoConversaoMidia(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=tamanho_original,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            tempo_processamento_s=tempo_total,
+            mensagem_erro=str(err),
+        )
+    finally:
+        if processo is not None:
+            with _lock_processos:
+                _processos_ativos.discard(processo)

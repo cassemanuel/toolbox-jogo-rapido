@@ -11,8 +11,14 @@ from core.calculadora import (
     converter_minutos,
     converter_segundos,
 )
-from core.imagem import FORMATOS_SAIDA, otimizar_imagem, otimizar_lote
-from core.video import comprimir_video
+from core.imagem import (
+    FORMATOS_CONVERSAO,
+    FORMATOS_SAIDA,
+    converter_imagem,
+    otimizar_imagem,
+    otimizar_lote,
+)
+from core.video import comprimir_video, converter_midia
 
 
 def tratar_calc(args: argparse.Namespace) -> None:
@@ -132,6 +138,38 @@ def tratar_video(args: argparse.Namespace) -> None:
     print(f"[AVISO] {res.aviso}")
 
 
+def tratar_converter(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  if not origem.is_file():
+    print(f"Erro: Arquivo de origem '{origem}' não existe.")
+    sys.exit(1)
+
+  if args.destino:
+    destino = Path(args.destino)
+  elif args.formato:
+    ext = args.formato if args.formato.startswith(".") else f".{args.formato}"
+    destino = origem.with_name(f"{origem.stem}_convertido{ext}")
+  else:
+    print("Erro: especifique --destino ou --formato.")
+    sys.exit(1)
+
+  ext_destino = destino.suffix.lower()
+  if ext_destino in FORMATOS_CONVERSAO:
+    res = converter_imagem(origem, destino)
+  else:
+    res = converter_midia(origem, destino, args.audio_bitrate)
+
+  if not res.sucesso:
+    print(f"[FALHA] {res.mensagem_erro}")
+    sys.exit(1)
+
+  final_kb = res.tamanho_final_bytes / 1024
+  print(
+      f"[OK] {res.caminho_destino} ({final_kb:.1f} KB,"
+      f" {res.tempo_processamento_s:.2f}s)"
+  )
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(
       description="Toolkit Unificado de Automação de Mídia e Cálculos"
@@ -195,6 +233,30 @@ def main() -> None:
       "--audio-bitrate", type=int, default=96, help="Bitrate do áudio em kbps"
   )
   p_vid.set_defaults(func=tratar_video)
+
+  # Subcomando converter
+  p_conv = subparsers.add_parser(
+      "converter", help="Conversão direta de formato (sem teto de tamanho)"
+  )
+  p_conv.add_argument(
+      "--origem", type=str, required=True, help="Arquivo de entrada"
+  )
+  p_conv.add_argument(
+      "--destino", type=str, help="Caminho de destino completo"
+  )
+  p_conv.add_argument(
+      "--formato",
+      type=str,
+      help="Extensão de destino (ex: mp4, mp3, webp) quando --destino "
+      "não for informado",
+  )
+  p_conv.add_argument(
+      "--audio-bitrate",
+      type=int,
+      default=192,
+      help="Bitrate de áudio em kbps (vídeo/áudio)",
+  )
+  p_conv.set_defaults(func=tratar_converter)
 
   # Subcomando vasco
   p_vasco = subparsers.add_parser("vasco", help="Exibe a Cruz de Malta legada")

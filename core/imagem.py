@@ -181,3 +181,87 @@ def otimizar_lote(
                     sucesso=False,
                     mensagem_erro=str(e),
                 )
+
+
+FORMATOS_CONVERSAO = {
+    ".png": "PNG",
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".webp": "WEBP",
+    ".ico": "ICO",
+    ".bmp": "BMP",
+}
+_FORMATOS_COM_ALFA = {"PNG", "WEBP", "ICO"}
+
+
+def converter_imagem(origem: Path, destino: Path) -> ResultadoCompressao:
+    """Conversão 1:1 de formato via Pillow, sem redimensionamento forçado.
+
+    Preserva transparência quando o formato de destino suporta (PNG,
+    WEBP, ICO); aplica fundo branco quando não suporta (JPEG, BMP).
+    """
+    t_inicio = time.perf_counter()
+    formato = FORMATOS_CONVERSAO.get(destino.suffix.lower())
+    if formato is None:
+        return ResultadoCompressao(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            mensagem_erro=(
+                f"Formato de destino não suportado: {destino.suffix}"
+            ),
+        )
+    try:
+        with Image.open(origem) as img:
+            perfil_icc = img.info.get("icc_profile")
+            img = ImageOps.exif_transpose(img)
+
+            tem_alfa = img.mode in ("RGBA", "LA") or (
+                img.mode == "P" and "transparency" in img.info
+            )
+            if formato in _FORMATOS_COM_ALFA:
+                if tem_alfa:
+                    img = img.convert("RGBA")
+                elif img.mode == "P":
+                    img = img.convert("RGB")
+            elif tem_alfa:
+                fundo = Image.new("RGB", img.size, (255, 255, 255))
+                img_rgba = img.convert("RGBA")
+                fundo.paste(img_rgba, mask=img_rgba.split()[3])
+                img = fundo
+            elif img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            opcoes_save = {}
+            if formato == "JPEG":
+                opcoes_save = {"optimize": True, "quality": 92}
+            if perfil_icc and formato != "ICO":
+                opcoes_save["icc_profile"] = perfil_icc
+            img.save(destino, formato, **opcoes_save)
+
+            tamanho_original_bytes = origem.stat().st_size
+            tamanho_final_bytes = destino.stat().st_size
+            tempo_total = time.perf_counter() - t_inicio
+
+            return ResultadoCompressao(
+                caminho_origem=origem,
+                caminho_destino=destino,
+                tamanho_original_bytes=tamanho_original_bytes,
+                tamanho_final_bytes=tamanho_final_bytes,
+                sucesso=True,
+                tempo_processamento_s=tempo_total,
+            )
+    except Exception as e:
+        tempo_total = time.perf_counter() - t_inicio
+        return ResultadoCompressao(
+            caminho_origem=origem,
+            caminho_destino=destino,
+            tamanho_original_bytes=0,
+            tamanho_final_bytes=0,
+            sucesso=False,
+            tempo_processamento_s=tempo_total,
+            mensagem_erro=str(e),
+        )

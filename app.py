@@ -14,11 +14,23 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
-from core.imagem import FORMATOS_SAIDA, otimizar_imagem, otimizar_lote
-from core.video import cancelar_processos_ativos, comprimir_video
+from core.imagem import (
+    FORMATOS_CONVERSAO,
+    FORMATOS_SAIDA,
+    converter_imagem,
+    otimizar_imagem,
+    otimizar_lote,
+)
+from core.video import cancelar_processos_ativos, comprimir_video, converter_midia
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+_RAIZ_PROJETO = Path(__file__).resolve().parent
+_FORMATOS_VIDEO_AUDIO = [
+    ".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".aac",
+]
+_FORMATOS_IMAGEM_CONVERSAO = list(FORMATOS_CONVERSAO.keys())
 
 
 class App(ctk.CTk):
@@ -34,9 +46,11 @@ class App(ctk.CTk):
     self._fila_ui: queue.Queue = queue.Queue()
     self._worker_video: threading.Thread | None = None
     self._worker_img: threading.Thread | None = None
+    self._worker_conv: threading.Thread | None = None
     self._cancel_video = threading.Event()
     self._ultimo_destino_video: Path | None = None
     self._ultimo_destino_img: Path | None = None
+    self._ultimo_destino_conv: Path | None = None
     self._modal_saida: ctk.CTkToplevel | None = None
     self._restante_saida = 0
 
@@ -45,10 +59,12 @@ class App(ctk.CTk):
 
     self.tab_video = self.tabview.add("Compressão de Vídeo")
     self.tab_img = self.tabview.add("Otimização de Imagens")
+    self.tab_conv = self.tabview.add("Conversão de Mídia")
     self.tab_calc = self.tabview.add("Calculadora de Tempo")
 
     self._setup_video_tab()
     self._setup_img_tab()
+    self._setup_conv_tab()
     self._setup_calc_tab()
 
     self.after(75, self._drenar_fila_ui)
@@ -70,7 +86,7 @@ class App(ctk.CTk):
 
   def _ao_fechar(self):
     cancelar_processos_ativos()
-    for worker in (self._worker_video, self._worker_img):
+    for worker in (self._worker_video, self._worker_img, self._worker_conv):
       if worker and worker.is_alive():
         worker.join(timeout=3.0)
 
@@ -135,21 +151,38 @@ class App(ctk.CTk):
     self._modal_saida = None
     self.destroy()
 
-  def _abrir_destino(self, destino):
-    if destino is None:
-      return
+  def _abrir_pasta_ou_padrao(self, ultimo_destino, texto_entrada):
+    """Abre a pasta de destino no Explorer. Ordem de resolução:
+    1) último resultado gerado com sucesso; 2) caminho no campo de
+    entrada; 3) raiz do projeto (fallback sempre disponível).
+    """
     try:
-      if destino.is_dir():
-        os.startfile(destino)
-      else:
-        subprocess.run(
-            ["explorer", f'/select,"{destino}"'],
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+      if ultimo_destino is not None:
+        if ultimo_destino.is_file():
+          subprocess.run(
+              ["explorer", f'/select,"{ultimo_destino}"'],
+              check=False,
+              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+          )
+          return
+        if ultimo_destino.is_dir():
+          os.startfile(ultimo_destino)
+          return
+
+      texto = (texto_entrada or "").strip()
+      if texto:
+        caminho = Path(texto)
+        if caminho.is_file():
+          os.startfile(caminho.parent)
+          return
+        if caminho.is_dir():
+          os.startfile(caminho)
+          return
+
+      os.startfile(_RAIZ_PROJETO)
     except Exception:
       try:
-        os.startfile(Path(destino).parent)
+        os.startfile(_RAIZ_PROJETO)
       except Exception:
         pass
 
@@ -224,8 +257,9 @@ class App(ctk.CTk):
         self.tab_video,
         text="Abrir Pasta de Destino",
         width=160,
-        state="disabled",
-        command=lambda: self._abrir_destino(self._ultimo_destino_video),
+        command=lambda: self._abrir_pasta_ou_padrao(
+            self._ultimo_destino_video, self.v_file.get()
+        ),
     )
     self.btn_v_abrir.pack(anchor="e", padx=15, pady=(0, 5))
 
@@ -350,7 +384,6 @@ class App(ctk.CTk):
       )
       self.log_v.insert("end", relatorio)
       self._ultimo_destino_video = res.caminho_destino
-      self.btn_v_abrir.configure(state="normal")
     else:
       self.log_v.insert(
           "end",
@@ -446,8 +479,9 @@ class App(ctk.CTk):
         self.tab_img,
         text="Abrir Pasta de Destino",
         width=160,
-        state="disabled",
-        command=lambda: self._abrir_destino(self._ultimo_destino_img),
+        command=lambda: self._abrir_pasta_ou_padrao(
+            self._ultimo_destino_img, self.i_path.get()
+        ),
     )
     self.btn_i_abrir.pack(anchor="e", padx=15, pady=(0, 5))
 
@@ -590,7 +624,6 @@ class App(ctk.CTk):
       )
     if res.sucesso:
       self._ultimo_destino_img = res.caminho_destino
-      self.btn_i_abrir.configure(state="normal")
     self.log_i.see("end")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
@@ -625,7 +658,6 @@ class App(ctk.CTk):
     )
     if sucessos > 0:
       self._ultimo_destino_img = destino
-      self.btn_i_abrir.configure(state="normal")
     self.log_i.see("end")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
@@ -637,6 +669,189 @@ class App(ctk.CTk):
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
     )
+
+  # -------------------------------------------------------------
+  # ABA: CONVERSÃO DE MÍDIA
+  # -------------------------------------------------------------
+  def _setup_conv_tab(self):
+    card = ctk.CTkFrame(
+        self.tab_conv, corner_radius=8, border_width=1, border_color="#3a3a3a"
+    )
+    card.pack(fill="x", padx=15, pady=10)
+
+    ctk.CTkLabel(
+        card,
+        text="Tipo de Conversão:",
+        font=ctk.CTkFont(weight="bold"),
+    ).grid(row=0, column=0, padx=12, pady=10, sticky="w")
+
+    self.conv_tipo = ctk.CTkSegmentedButton(
+        card,
+        values=["Vídeo / Áudio", "Imagem"],
+        command=self._conv_tipo_changed,
+    )
+    self.conv_tipo.set("Vídeo / Áudio")
+    self.conv_tipo.grid(row=0, column=1, padx=8, pady=10, sticky="w")
+
+    ctk.CTkLabel(
+        card,
+        text="Arquivo de Origem:",
+        font=ctk.CTkFont(weight="bold"),
+    ).grid(row=1, column=0, padx=12, pady=10, sticky="w")
+
+    self.conv_file = ctk.StringVar()
+    ctk.CTkEntry(
+        card,
+        textvariable=self.conv_file,
+        placeholder_text="Selecione o arquivo a converter...",
+    ).grid(row=1, column=1, padx=8, pady=10, sticky="ew")
+
+    ctk.CTkButton(
+        card, text="Buscar Arquivo", width=110, command=self._conv_select
+    ).grid(row=1, column=2, padx=12, pady=10)
+
+    f_sub = ctk.CTkFrame(card, fg_color="transparent")
+    f_sub.grid(
+        row=2, column=0, columnspan=3, padx=12, pady=(0, 10), sticky="w"
+    )
+
+    ctk.CTkLabel(f_sub, text="Formato de Destino:").pack(side="left")
+    self.conv_formato = ctk.CTkComboBox(
+        f_sub, values=_FORMATOS_VIDEO_AUDIO, width=100
+    )
+    self.conv_formato.set(_FORMATOS_VIDEO_AUDIO[0])
+    self.conv_formato.pack(side="left", padx=6)
+
+    card.grid_columnconfigure(1, weight=1)
+
+    self.btn_conv_start = ctk.CTkButton(
+        self.tab_conv,
+        text="Iniciar Conversão",
+        height=36,
+        font=ctk.CTkFont(weight="bold"),
+        fg_color="#1f6aa5",
+        hover_color="#144870",
+        command=self._conv_start,
+    )
+    self.btn_conv_start.pack(fill="x", padx=15, pady=5)
+
+    self.prog_conv = ctk.CTkProgressBar(self.tab_conv, corner_radius=8)
+    self.prog_conv.set(0)
+    self.prog_conv.pack(fill="x", padx=15, pady=(0, 5))
+
+    self.btn_conv_abrir = ctk.CTkButton(
+        self.tab_conv,
+        text="Abrir Pasta de Destino",
+        width=160,
+        command=lambda: self._abrir_pasta_ou_padrao(
+            self._ultimo_destino_conv, self.conv_file.get()
+        ),
+    )
+    self.btn_conv_abrir.pack(anchor="e", padx=15, pady=(0, 5))
+
+    self.log_conv = ctk.CTkTextbox(
+        self.tab_conv,
+        font=ctk.CTkFont(family="Consolas", size=11),
+        corner_radius=8,
+    )
+    self.log_conv.pack(fill="both", expand=True, padx=15, pady=10)
+
+  def _conv_tipo_changed(self, tipo):
+    valores = (
+        _FORMATOS_IMAGEM_CONVERSAO
+        if tipo == "Imagem"
+        else _FORMATOS_VIDEO_AUDIO
+    )
+    self.conv_formato.configure(values=valores)
+    self.conv_formato.set(valores[0])
+
+  def _conv_select(self):
+    if self.conv_tipo.get() == "Imagem":
+      caminho = filedialog.askopenfilename(
+          filetypes=[
+              ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.ico")
+          ]
+      )
+    else:
+      caminho = filedialog.askopenfilename(
+          filetypes=[
+              (
+                  "Mídia",
+                  "*.mp4 *.webm *.mkv *.mov *.avi *.mp3 *.wav *.aac"
+                  " *.flac *.ogg",
+              )
+          ]
+      )
+    if caminho:
+      self.conv_file.set(caminho)
+
+  def _conv_start(self):
+    origem = Path(self.conv_file.get().strip())
+    if not origem.is_file():
+      messagebox.showerror("Erro", "Arquivo de origem não encontrado.")
+      return
+
+    ext_destino = self.conv_formato.get()
+    destino = origem.parent / f"{origem.stem}_convertido{ext_destino}"
+    tipo = self.conv_tipo.get()
+
+    self.prog_conv.set(0)
+    self.btn_conv_start.configure(state="disabled", text="Convertendo...")
+    self.log_conv.insert(
+        "end", f">>> Convertendo: {origem.name} -> {destino.name}\n"
+    )
+    self.log_conv.see("end")
+
+    def worker():
+      try:
+        if tipo == "Imagem":
+          res = converter_imagem(origem, destino)
+          self._post_ui(self._conv_progresso, 100.0)
+        else:
+          res = converter_midia(
+              origem,
+              destino,
+              audio_bitrate_kbps=192,
+              progress_hook=lambda pct: self._post_ui(
+                  self._conv_progresso, pct
+              ),
+          )
+        self._post_ui(self._conv_concluir, res)
+      except Exception as e:
+        self._post_ui(self._conv_erro, e)
+
+    self._worker_conv = threading.Thread(target=worker, daemon=True)
+    self._worker_conv.start()
+
+  def _conv_progresso(self, pct):
+    self.prog_conv.set(min(100.0, max(0.0, pct)) / 100.0)
+
+  def _conv_concluir(self, res):
+    if res.sucesso:
+      orig_kb = res.tamanho_original_bytes / 1024
+      final_kb = res.tamanho_final_bytes / 1024
+      self.log_conv.insert(
+          "end",
+          f"[OK] {res.caminho_destino.name}\n"
+          f"     Tamanho : {orig_kb:.1f} KB -> {final_kb:.1f} KB\n"
+          f"     Duração : {res.tempo_processamento_s:.3f} s\n{'-'*55}\n",
+      )
+      self._ultimo_destino_conv = res.caminho_destino
+    else:
+      self.prog_conv.set(0)
+      self.log_conv.insert(
+          "end", f"[FALHA] {res.mensagem_erro}\n{'-'*55}\n"
+      )
+    self.log_conv.see("end")
+    self.btn_conv_start.configure(state="normal", text="Iniciar Conversão")
+
+  def _conv_erro(self, erro):
+    self.prog_conv.set(0)
+    self.log_conv.insert(
+        "end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n"
+    )
+    self.log_conv.see("end")
+    self.btn_conv_start.configure(state="normal", text="Iniciar Conversão")
 
   # -------------------------------------------------------------
   # ABA: CALCULADORA
