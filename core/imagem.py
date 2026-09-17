@@ -3,7 +3,9 @@ Módulo de otimização de imagens individuais e em lote via Pillow.
 Substitui a implementação monolítica de 'comprimir.py'.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import time
 from typing import Generator
@@ -127,11 +129,35 @@ def otimizar_lote(
         )
         return
 
-    for arquivo in arquivos:
-        if arquivo.is_file() and arquivo.suffix.lower() in extensoes_validas:
-            destino_arquivo = (
-                diretorio_destino / f"{arquivo.stem}_otimizada.jpg"
-            )
-            yield otimizar_imagem(
-                arquivo, destino_arquivo, max_dimensao, qualidade
-            )
+    alvos = [
+        arquivo
+        for arquivo in arquivos
+        if arquivo.is_file() and arquivo.suffix.lower() in extensoes_validas
+    ]
+
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
+        futuros = {
+            executor.submit(
+                otimizar_imagem,
+                arquivo,
+                diretorio_destino / f"{arquivo.stem}_otimizada.jpg",
+                max_dimensao,
+                qualidade,
+            ): arquivo
+            for arquivo in alvos
+        }
+        for futuro in as_completed(futuros):
+            arquivo = futuros[futuro]
+            try:
+                yield futuro.result()
+            except Exception as e:
+                yield ResultadoCompressao(
+                    caminho_origem=arquivo,
+                    caminho_destino=(
+                        diretorio_destino / f"{arquivo.stem}_otimizada.jpg"
+                    ),
+                    tamanho_original_bytes=0,
+                    tamanho_final_bytes=0,
+                    sucesso=False,
+                    mensagem_erro=str(e),
+                )
