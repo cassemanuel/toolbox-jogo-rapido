@@ -1,0 +1,35 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- PyInstaller / Builds Windows ----
+build/
+dist/
+*.manifest
+*.toc
+*.pkg
+*.exe.spec.bak
+
+# ---- Artefatos do projeto ----
+Arquivos-de-Teste/
+*.log
+
+# ---- IDEs ----
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ---- Windows ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
