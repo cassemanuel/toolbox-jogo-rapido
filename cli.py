@@ -11,7 +11,7 @@ from core.calculadora import (
     converter_minutos,
     converter_segundos,
 )
-from core.imagem import otimizar_imagem, otimizar_lote
+from core.imagem import FORMATOS_SAIDA, otimizar_imagem, otimizar_lote
 from core.video import comprimir_video
 
 
@@ -44,11 +44,18 @@ def tratar_imagem(args: argparse.Namespace) -> None:
     sys.exit(1)
 
   if origem.is_file():
+    ext_saida = FORMATOS_SAIDA[args.formato]
     destino_arquivo = (
-        destino if destino.suffix else destino / f"{origem.stem}_otimizada.jpg"
+        destino
+        if destino.suffix
+        else destino / f"{origem.stem}_otimizada{ext_saida}"
     )
     res = otimizar_imagem(
-        origem, destino_arquivo, args.max_dimensao, args.qualidade
+        origem,
+        destino_arquivo,
+        args.max_dimensao,
+        args.qualidade,
+        formato_saida=args.formato,
     )
     if res.sucesso:
       print(
@@ -66,7 +73,9 @@ def tratar_imagem(args: argparse.Namespace) -> None:
   bytes_antes = 0
   bytes_depois = 0
 
-  for res in otimizar_lote(origem, destino, args.max_dimensao, args.qualidade):
+  for res in otimizar_lote(
+      origem, destino, args.max_dimensao, args.qualidade, args.formato
+  ):
     total += 1
     if res.sucesso:
       sucessos += 1
@@ -97,8 +106,8 @@ def tratar_video(args: argparse.Namespace) -> None:
     print(f"Erro: Arquivo de vídeo '{origem}' não existe.")
     sys.exit(1)
 
-  if destino.suffix.lower() not in (".mp4", ".webm"):
-    print("Erro: A extensão do arquivo de saída deve ser .mp4 ou .webm.")
+  if destino.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mp3"):
+    print("Erro: A saída deve ser .mp4, .webm, .mkv ou .mp3.")
     sys.exit(1)
 
   print(f"Iniciando codificação de '{origem.name}' para '{destino.name}'...")
@@ -112,7 +121,8 @@ def tratar_video(args: argparse.Namespace) -> None:
   print("\n" + "=" * 50)
   print("STATUS              : SUCESSO")
   print(f"Arquivo Final       : {res.caminho_destino} ({tamanho_final_mb:.2f} MB)")
-  print(f"Bitrate de Vídeo    : {res.bitrate_k} kbps")
+  if res.bitrate_k > 0:
+    print(f"Bitrate de Vídeo    : {res.bitrate_k} kbps")
   print(f"GPU Detectada       : {res.telemetria.modelo_gpu}")
   print(f"Uso CPU (Média/Pico): {res.telemetria.cpu_media:.1f}% / {res.telemetria.cpu_pico:.1f}%")
   print(f"Uso GPU (Média/Pico): {res.telemetria.gpu_media:.1f}% / {res.telemetria.gpu_pico:.1f}%")
@@ -157,7 +167,13 @@ def main() -> None:
       "--max-dimensao", type=int, default=1920, help="Limite em pixels"
   )
   p_img.add_argument(
-      "--qualidade", type=int, default=80, help="Qualidade JPEG (1-100)"
+      "--qualidade", type=int, default=80, help="Qualidade JPEG/WEBP (1-100)"
+  )
+  p_img.add_argument(
+      "--formato",
+      choices=list(FORMATOS_SAIDA.keys()),
+      default="JPEG",
+      help="Formato de saída",
   )
   p_img.set_defaults(func=tratar_imagem)
 
@@ -167,7 +183,10 @@ def main() -> None:
       "--origem", type=str, required=True, help="Vídeo de entrada"
   )
   p_vid.add_argument(
-      "--destino", type=str, required=True, help="Saída (.mp4/.webm)"
+      "--destino",
+      type=str,
+      required=True,
+      help="Saída (.mp4/.webm/.mkv/.mp3)"
   )
   p_vid.add_argument(
       "--tamanho", type=float, default=25.0, help="Tamanho alvo em MB"

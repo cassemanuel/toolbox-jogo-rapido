@@ -4,15 +4,17 @@ Design estruturado em cards, grids alinhados e exibição de tempos de
 processamento.
 """
 
+import os
 from pathlib import Path
 import queue
+import subprocess
 import threading
 import time
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
-from core.imagem import otimizar_imagem, otimizar_lote
+from core.imagem import FORMATOS_SAIDA, otimizar_imagem, otimizar_lote
 from core.video import cancelar_processos_ativos, comprimir_video
 
 ctk.set_appearance_mode("Dark")
@@ -33,6 +35,10 @@ class App(ctk.CTk):
     self._worker_video: threading.Thread | None = None
     self._worker_img: threading.Thread | None = None
     self._cancel_video = threading.Event()
+    self._ultimo_destino_video: Path | None = None
+    self._ultimo_destino_img: Path | None = None
+    self._modal_saida: ctk.CTkToplevel | None = None
+    self._restante_saida = 0
 
     self.tabview = ctk.CTkTabview(self, corner_radius=10)
     self.tabview.pack(fill="both", expand=True, padx=20, pady=15)
@@ -70,10 +76,12 @@ class App(ctk.CTk):
 
     modal = ctk.CTkToplevel(self)
     modal.title("CRVG - Finalizando")
-    modal.geometry("400x420")
+    modal.geometry("400x460")
     modal.resizable(False, False)
     modal.attributes("-topmost", True)
-    modal.protocol("WM_DELETE_WINDOW", self.destroy)
+    modal.protocol("WM_DELETE_WINDOW", self._finalizar)
+    self._modal_saida = modal
+    self._restante_saida = 4
 
     ctk.CTkLabel(
         modal,
@@ -90,13 +98,60 @@ class App(ctk.CTk):
     textbox.insert("1.0", ARTE_VASCO)
     textbox.configure(state="disabled")
 
+    self._lbl_timer = ctk.CTkLabel(
+        modal,
+        text=f"Encerrando em {self._restante_saida}s...",
+        font=ctk.CTkFont(size=11),
+        text_color="#888888",
+    )
+    self._lbl_timer.pack(pady=(0, 4))
+
     ctk.CTkButton(
         modal,
         text="Encerrar Aplicação",
         fg_color="#8B0000",
         hover_color="#550000",
-        command=self.destroy,
+        command=self._finalizar,
     ).pack(pady=(0, 15))
+
+    modal.after(1000, self._tick_saida)
+
+  def _tick_saida(self):
+    if self._modal_saida is None:
+      return
+    self._restante_saida -= 1
+    if self._restante_saida <= 0:
+      self._finalizar()
+      return
+    try:
+      self._lbl_timer.configure(
+          text=f"Encerrando em {self._restante_saida}s..."
+      )
+      self._modal_saida.after(1000, self._tick_saida)
+    except Exception:
+      pass
+
+  def _finalizar(self):
+    self._modal_saida = None
+    self.destroy()
+
+  def _abrir_destino(self, destino):
+    if destino is None:
+      return
+    try:
+      if destino.is_dir():
+        os.startfile(destino)
+      else:
+        subprocess.run(
+            ["explorer", f'/select,"{destino}"'],
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+      try:
+        os.startfile(Path(destino).parent)
+      except Exception:
+        pass
 
   # -------------------------------------------------------------
   # ABA: VÍDEO
@@ -139,7 +194,12 @@ class App(ctk.CTk):
     ctk.CTkLabel(f_sub, text="MB").pack(side="left", padx=(0, 20))
 
     ctk.CTkLabel(f_sub, text="Formato:").pack(side="left")
-    self.v_format = ctk.CTkComboBox(f_sub, values=[".mp4", ".webm"], width=90)
+    self.v_format = ctk.CTkComboBox(
+        f_sub,
+        values=[".mp4", ".webm", ".mkv", ".mp3"],
+        width=90,
+        command=self._v_formato_changed,
+    )
     self.v_format.set(".mp4")
     self.v_format.pack(side="left", padx=6)
 
@@ -160,12 +220,27 @@ class App(ctk.CTk):
     self.prog_v.set(0)
     self.prog_v.pack(fill="x", padx=15, pady=(0, 5))
 
+    self.btn_v_abrir = ctk.CTkButton(
+        self.tab_video,
+        text="Abrir Pasta de Destino",
+        width=160,
+        state="disabled",
+        command=lambda: self._abrir_destino(self._ultimo_destino_video),
+    )
+    self.btn_v_abrir.pack(anchor="e", padx=15, pady=(0, 5))
+
     self.log_v = ctk.CTkTextbox(
         self.tab_video,
         font=ctk.CTkFont(family="Consolas", size=11),
         corner_radius=8,
     )
     self.log_v.pack(fill="both", expand=True, padx=15, pady=10)
+
+  def _v_formato_changed(self, formato):
+    somente_audio = formato == ".mp3"
+    self.v_size.configure(
+        state="disabled" if somente_audio else "normal"
+    )
 
   def _v_select(self):
     caminho = filedialog.askopenfilename(
@@ -274,6 +349,8 @@ class App(ctk.CTk):
           f"{'='*55}\n"
       )
       self.log_v.insert("end", relatorio)
+      self._ultimo_destino_video = res.caminho_destino
+      self.btn_v_abrir.configure(state="normal")
     else:
       self.log_v.insert(
           "end",
@@ -317,18 +394,22 @@ class App(ctk.CTk):
         placeholder_text="Selecione um arquivo de imagem ou diretório...",
     ).grid(row=0, column=1, padx=8, pady=10, sticky="ew")
 
-    botoes_box = ctk.CTkFrame(card, fg_color="transparent")
-    botoes_box.grid(row=0, column=2, padx=8, pady=10)
-    ctk.CTkButton(
-        botoes_box, text="Arquivo", width=65, command=self._i_select_file
-    ).pack(side="left", padx=2)
-    ctk.CTkButton(
-        botoes_box, text="Pasta", width=65, command=self._i_select_dir
-    ).pack(side="left", padx=2)
+    self.i_modo = ctk.CTkSegmentedButton(
+        card,
+        values=["Arquivo Único", "Lote de Pasta"],
+        command=self._i_modo_changed,
+    )
+    self.i_modo.set("Arquivo Único")
+    self.i_modo.grid(row=0, column=2, padx=8, pady=10)
+
+    self.btn_i_buscar = ctk.CTkButton(
+        card, text="Buscar Arquivo", width=110, command=self._i_buscar
+    )
+    self.btn_i_buscar.grid(row=0, column=3, padx=8, pady=10)
 
     f_sub = ctk.CTkFrame(card, fg_color="transparent")
     f_sub.grid(
-        row=1, column=0, columnspan=3, padx=12, pady=(0, 10), sticky="w"
+        row=1, column=0, columnspan=4, padx=12, pady=(0, 10), sticky="w"
     )
 
     ctk.CTkLabel(f_sub, text="Dimensão Máxima (px):").pack(side="left")
@@ -336,10 +417,17 @@ class App(ctk.CTk):
     self.i_max.insert(0, "1920")
     self.i_max.pack(side="left", padx=(6, 20))
 
-    ctk.CTkLabel(f_sub, text="Qualidade JPEG (1-100):").pack(side="left")
+    ctk.CTkLabel(f_sub, text="Qualidade (1-100):").pack(side="left")
     self.i_qual = ctk.CTkEntry(f_sub, width=60)
     self.i_qual.insert(0, "80")
-    self.i_qual.pack(side="left", padx=6)
+    self.i_qual.pack(side="left", padx=(6, 20))
+
+    ctk.CTkLabel(f_sub, text="Formato:").pack(side="left")
+    self.i_fmt = ctk.CTkComboBox(
+        f_sub, values=list(FORMATOS_SAIDA.keys()), width=90
+    )
+    self.i_fmt.set("JPEG")
+    self.i_fmt.pack(side="left", padx=6)
 
     card.grid_columnconfigure(1, weight=1)
 
@@ -354,12 +442,32 @@ class App(ctk.CTk):
     )
     self.btn_i_start.pack(fill="x", padx=15, pady=5)
 
+    self.btn_i_abrir = ctk.CTkButton(
+        self.tab_img,
+        text="Abrir Pasta de Destino",
+        width=160,
+        state="disabled",
+        command=lambda: self._abrir_destino(self._ultimo_destino_img),
+    )
+    self.btn_i_abrir.pack(anchor="e", padx=15, pady=(0, 5))
+
     self.log_i = ctk.CTkTextbox(
         self.tab_img,
         font=ctk.CTkFont(family="Consolas", size=11),
         corner_radius=8,
     )
     self.log_i.pack(fill="both", expand=True, padx=15, pady=10)
+
+  def _i_modo_changed(self, modo):
+    self.btn_i_buscar.configure(
+        text="Buscar Pasta" if modo == "Lote de Pasta" else "Buscar Arquivo"
+    )
+
+  def _i_buscar(self):
+    if self.i_modo.get() == "Lote de Pasta":
+      self._i_select_dir()
+    else:
+      self._i_select_file()
 
   def _i_select_file(self):
     caminho = filedialog.askopenfilename(
@@ -396,20 +504,27 @@ class App(ctk.CTk):
       )
       return
 
+    formato = self.i_fmt.get()
+    ext_saida = FORMATOS_SAIDA[formato]
+
     self.btn_i_start.configure(
         state="disabled", text="Processando Imagens..."
     )
 
     if origem.is_file():
-      destino = origem.parent / f"{origem.stem}_otimizada.jpg"
+      destino = origem.parent / f"{origem.stem}_otimizada{ext_saida}"
       self.log_i.insert(
-          "end", f">>> Otimizando arquivo individual: {origem.name}\n"
+          "end",
+          f">>> Otimizando arquivo individual: {origem.name}"
+          f" | Formato: {formato}\n",
       )
       self.log_i.see("end")
 
       def worker_arquivo():
         try:
-          res = otimizar_imagem(origem, destino, max_dim, qualidade)
+          res = otimizar_imagem(
+              origem, destino, max_dim, qualidade, formato_saida=formato
+          )
           self._post_ui(self._i_concluir_arquivo, res)
         except Exception as e:
           self._post_ui(self._i_erro, e)
@@ -432,7 +547,9 @@ class App(ctk.CTk):
       bytes_depois = 0
       t_inicio = time.perf_counter()
       try:
-        for res in otimizar_lote(origem, destino, max_dim, qualidade):
+        for res in otimizar_lote(
+            origem, destino, max_dim, qualidade, formato_saida=formato
+        ):
           total += 1
           if res.sucesso:
             sucessos += 1
@@ -447,6 +564,7 @@ class App(ctk.CTk):
             bytes_antes,
             bytes_depois,
             tempo,
+            destino,
         )
       except Exception as e:
         self._post_ui(self._i_erro, e)
@@ -470,6 +588,9 @@ class App(ctk.CTk):
           "end",
           f"[FALHA] {res.mensagem_erro} ({dur:.3f} s)\n{'-'*55}\n",
       )
+    if res.sucesso:
+      self._ultimo_destino_img = res.caminho_destino
+      self.btn_i_abrir.configure(state="normal")
     self.log_i.see("end")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"
@@ -491,7 +612,7 @@ class App(ctk.CTk):
     self.log_i.see("end")
 
   def _i_concluir_lote(
-      self, total, sucessos, bytes_antes, bytes_depois, tempo
+      self, total, sucessos, bytes_antes, bytes_depois, tempo, destino
   ):
     economia_mb = (bytes_antes - bytes_depois) / (1024 * 1024)
     self.log_i.insert(
@@ -502,6 +623,9 @@ class App(ctk.CTk):
         f" Espaço Economizado  : {economia_mb:.2f} MB\n"
         f"{'='*55}\n",
     )
+    if sucessos > 0:
+      self._ultimo_destino_img = destino
+      self.btn_i_abrir.configure(state="normal")
     self.log_i.see("end")
     self.btn_i_start.configure(
         state="normal", text="Iniciar Otimização de Imagens"

@@ -216,26 +216,30 @@ def comprimir_video(
             mensagem_erro="Arquivo de origem não existe.",
         )
 
+    ext = destino.suffix.lower()
     try:
         duracao = obter_duracao_video(origem)
         tamanho_original = origem.stat().st_size
-        bitrate_v = calcular_bitrate_alvo_kbps(
-            duracao, tamanho_alvo_mb, audio_bitrate_kbps
-        )
-        bitrate_ideal = int(
-            tamanho_alvo_mb * 8192 / duracao - audio_bitrate_kbps
-        )
-        if bitrate_ideal < BITRATE_MIN_KBPS:
-            aviso = (
-                f"Bitrate ideal {bitrate_ideal} kbps abaixo do piso "
-                f"executável ({BITRATE_MIN_KBPS} kbps): alvo de "
-                f"{tamanho_alvo_mb} MB inatingível para esta duração."
+        if ext in (".mp4", ".mkv", ".webm"):
+            bitrate_v = calcular_bitrate_alvo_kbps(
+                duracao, tamanho_alvo_mb, audio_bitrate_kbps
             )
-        elif bitrate_ideal > BITRATE_MAX_KBPS:
-            aviso = (
-                f"Bitrate ideal {bitrate_ideal} kbps acima do teto "
-                f"({BITRATE_MAX_KBPS} kbps): limitado por segurança."
+            bitrate_ideal = int(
+                tamanho_alvo_mb * 8192 / duracao - audio_bitrate_kbps
             )
+            if bitrate_ideal < BITRATE_MIN_KBPS:
+                aviso = (
+                    f"Bitrate ideal {bitrate_ideal} kbps abaixo do piso "
+                    f"executável ({BITRATE_MIN_KBPS} kbps): alvo de "
+                    f"{tamanho_alvo_mb} MB inatingível para esta duração."
+                )
+            elif bitrate_ideal > BITRATE_MAX_KBPS:
+                aviso = (
+                    f"Bitrate ideal {bitrate_ideal} kbps acima do teto "
+                    f"({BITRATE_MAX_KBPS} kbps): limitado por segurança."
+                )
+        else:
+            bitrate_v = 0
     except Exception as e:
         return ResultadoCompressaoVideo(
             caminho_origem=origem,
@@ -266,7 +270,25 @@ def comprimir_video(
             mensagem_erro=f"Falha ao criar diretório de saída: {e}",
         )
 
-    if destino.suffix.lower() == ".webm":
+    if ext == ".mp3":
+        cmd = [
+            _FFMPEG,
+            "-nostats",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(origem),
+            "-progress",
+            "pipe:1",
+            "-vn",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            f"{audio_bitrate_kbps}k",
+            str(destino),
+        ]
+    elif ext == ".webm":
         cmd = [
             _FFMPEG,
             "-nostats",
@@ -303,7 +325,7 @@ def comprimir_video(
             f"{audio_bitrate_kbps}k",
             str(destino),
         ]
-    elif destino.suffix.lower() == ".mp4":
+    elif ext in (".mp4", ".mkv"):
         cmd = [
             _FFMPEG,
             "-nostats",
@@ -332,10 +354,10 @@ def comprimir_video(
             "aac",
             "-b:a",
             f"{audio_bitrate_kbps}k",
-            "-movflags",
-            "+faststart",
-            str(destino),
         ]
+        if ext == ".mp4":
+            cmd += ["-movflags", "+faststart"]
+        cmd.append(str(destino))
     else:
         return ResultadoCompressaoVideo(
             caminho_origem=origem,
@@ -347,7 +369,7 @@ def comprimir_video(
             telemetria=telemetria_vazia,
             sucesso=False,
             tempo_processamento_s=time.perf_counter() - t_inicio,
-            mensagem_erro="Formato inválido. Use .mp4 ou .webm",
+            mensagem_erro="Formato inválido. Use .mp4, .mkv, .webm ou .mp3",
             aviso=aviso,
         )
 

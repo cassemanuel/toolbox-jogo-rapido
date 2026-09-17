@@ -23,11 +23,18 @@ class ResultadoCompressao:
     mensagem_erro: str = ""
 
 
-def _validar_parametros(max_dimensao: int, qualidade: int) -> str:
+FORMATOS_SAIDA = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+
+
+def _validar_parametros(
+    max_dimensao: int, qualidade: int, formato_saida: str = "JPEG"
+) -> str:
     if not 1 <= qualidade <= 100:
-        return "Qualidade JPEG deve estar no intervalo [1, 100]."
+        return "Qualidade deve estar no intervalo [1, 100]."
     if max_dimensao <= 0:
         return "Dimensão máxima deve ser maior que zero."
+    if formato_saida not in FORMATOS_SAIDA:
+        return "Formato inválido. Use JPEG, PNG ou WEBP."
     return ""
 
 
@@ -36,9 +43,10 @@ def otimizar_imagem(
     destino: Path,
     max_dimensao: int = 1920,
     qualidade: int = 80,
+    formato_saida: str = "JPEG",
 ) -> ResultadoCompressao:
     t_inicio = time.perf_counter()
-    if erro := _validar_parametros(max_dimensao, qualidade):
+    if erro := _validar_parametros(max_dimensao, qualidade, formato_saida):
         return ResultadoCompressao(
             caminho_origem=origem,
             caminho_destino=destino,
@@ -52,14 +60,20 @@ def otimizar_imagem(
             perfil_icc = img.info.get("icc_profile")
             img = ImageOps.exif_transpose(img)
 
-            if img.mode in ("RGBA", "LA") or (
+            tem_alfa = img.mode in ("RGBA", "LA") or (
                 img.mode == "P" and "transparency" in img.info
-            ):
-                fundo = Image.new("RGB", img.size, (255, 255, 255))
-                img_rgba = img.convert("RGBA")
-                fundo.paste(img_rgba, mask=img_rgba.split()[3])
-                img = fundo
-            elif img.mode != "RGB":
+            )
+            if formato_saida == "JPEG":
+                if tem_alfa:
+                    fundo = Image.new("RGB", img.size, (255, 255, 255))
+                    img_rgba = img.convert("RGBA")
+                    fundo.paste(img_rgba, mask=img_rgba.split()[3])
+                    img = fundo
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+            elif tem_alfa:
+                img = img.convert("RGBA")
+            elif img.mode == "P":
                 img = img.convert("RGB")
 
             if img.width > max_dimensao or img.height > max_dimensao:
@@ -68,10 +82,12 @@ def otimizar_imagem(
                 )
 
             destino.parent.mkdir(parents=True, exist_ok=True)
-            opcoes_save = {"optimize": True, "quality": qualidade}
+            opcoes_save = {"optimize": True}
+            if formato_saida != "PNG":
+                opcoes_save["quality"] = qualidade
             if perfil_icc:
                 opcoes_save["icc_profile"] = perfil_icc
-            img.save(destino, "JPEG", **opcoes_save)
+            img.save(destino, formato_saida, **opcoes_save)
 
             tamanho_original_bytes = origem.stat().st_size
             tamanho_final_bytes = destino.stat().st_size
@@ -103,9 +119,10 @@ def otimizar_lote(
     diretorio_destino: Path,
     max_dimensao: int = 1920,
     qualidade: int = 80,
+    formato_saida: str = "JPEG",
 ) -> Generator[ResultadoCompressao, None, None]:
     extensoes_validas = {".jpg", ".jpeg", ".png", ".webp"}
-    if erro := _validar_parametros(max_dimensao, qualidade):
+    if erro := _validar_parametros(max_dimensao, qualidade, formato_saida):
         yield ResultadoCompressao(
             caminho_origem=diretorio_origem,
             caminho_destino=diretorio_destino,
@@ -135,14 +152,16 @@ def otimizar_lote(
         if arquivo.is_file() and arquivo.suffix.lower() in extensoes_validas
     ]
 
+    ext_saida = FORMATOS_SAIDA[formato_saida]
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
         futuros = {
             executor.submit(
                 otimizar_imagem,
                 arquivo,
-                diretorio_destino / f"{arquivo.stem}_otimizada.jpg",
+                diretorio_destino / f"{arquivo.stem}_otimizada{ext_saida}",
                 max_dimensao,
                 qualidade,
+                formato_saida,
             ): arquivo
             for arquivo in alvos
         }
@@ -154,7 +173,8 @@ def otimizar_lote(
                 yield ResultadoCompressao(
                     caminho_origem=arquivo,
                     caminho_destino=(
-                        diretorio_destino / f"{arquivo.stem}_otimizada.jpg"
+                        diretorio_destino
+                        / f"{arquivo.stem}_otimizada{ext_saida}"
                     ),
                     tamanho_original_bytes=0,
                     tamanho_final_bytes=0,

@@ -30,26 +30,31 @@ A interface (`customtkinter`) oferece três abas: Compressão de Vídeo (com bar
 
 ## Como Executar — Linha de Comando (CLI)
 
-### Compressão de vídeo
+### Compressão de vídeo e conversão de formato
 
 ```
 python cli.py video --origem entrada.mp4 --destino saida.mp4 --tamanho 25 --audio-bitrate 96
+python cli.py video --origem entrada.mov --destino saida.mkv  --tamanho 25
+python cli.py video --origem entrada.mp4 --destino audio.mp3  --audio-bitrate 192   # extrai só o áudio
 ```
 
-O tamanho alvo (MB) define o bitrate; valores fora da faixa executável geram aviso e clamp automático (piso 150 kbps / teto 50 Mbps).
+Formatos de saída: `.mp4`, `.webm`, `.mkv` (H.264/VP9 com teto de tamanho) e `.mp3` (extração de áudio via libmp3lame — `--tamanho` não se aplica). Valores de bitrate fora da faixa executável geram aviso e clamp automático (piso 150 kbps / teto 50 Mbps).
 
 ### Otimização de imagem — arquivo único
 
 ```
 python cli.py imagem --origem foto.png --destino foto_otimizada.jpg --qualidade 85
+python cli.py imagem --origem foto.jpg --destino saida.webp --formato WEBP --qualidade 90
 ```
+
+`--formato` aceita `JPEG` (fundo branco sobre transparência), `PNG` (preserva alfa) e `WEBP` (preserva alfa).
 
 ### Otimização de imagem — pasta em lote
 
 Quando `--origem` é um diretório, o modo lote é ativado automaticamente (processamento paralelo):
 
 ```
-python cli.py imagem --origem pasta/fotos/ --destino pasta/otimizadas/ --max-dimensao 1920 --qualidade 80
+python cli.py imagem --origem pasta/fotos/ --destino pasta/otimizadas/ --max-dimensao 1920 --qualidade 80 --formato WEBP
 ```
 
 ### Calculadora de tempo
