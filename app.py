@@ -5,6 +5,7 @@ processamento.
 """
 
 from pathlib import Path
+import queue
 import threading
 import time
 from tkinter import filedialog, messagebox
@@ -12,7 +13,7 @@ import customtkinter as ctk
 
 from core.calculadora import ARTE_VASCO, calcular_aceleracao_tempo
 from core.imagem import otimizar_imagem, otimizar_lote
-from core.video import comprimir_video
+from core.video import cancelar_processos_ativos, comprimir_video
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -28,6 +29,10 @@ class App(ctk.CTk):
 
     self.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 
+    self._fila_ui: queue.Queue = queue.Queue()
+    self._worker_video: threading.Thread | None = None
+    self._worker_img: threading.Thread | None = None
+
     self.tabview = ctk.CTkTabview(self, corner_radius=10)
     self.tabview.pack(fill="both", expand=True, padx=20, pady=15)
 
@@ -39,7 +44,29 @@ class App(ctk.CTk):
     self._setup_img_tab()
     self._setup_calc_tab()
 
+    self.after(75, self._drenar_fila_ui)
+
+  def _post_ui(self, fn, *args):
+    self._fila_ui.put((fn, args))
+
+  def _drenar_fila_ui(self):
+    try:
+      while True:
+        fn, args = self._fila_ui.get_nowait()
+        try:
+          fn(*args)
+        except Exception:
+          pass
+    except queue.Empty:
+      pass
+    self.after(75, self._drenar_fila_ui)
+
   def _ao_fechar(self):
+    cancelar_processos_ativos()
+    for worker in (self._worker_video, self._worker_img):
+      if worker and worker.is_alive():
+        worker.join(timeout=3.0)
+
     modal = ctk.CTkToplevel(self)
     modal.title("CRVG - Finalizando")
     modal.geometry("400x420")
@@ -143,87 +170,98 @@ class App(ctk.CTk):
       self.v_file.set(caminho)
 
   def _v_start(self):
+    origem = Path(self.v_file.get().strip())
+    if not origem.is_file():
+      messagebox.showerror(
+          "Erro", "Arquivo de vídeo de origem não encontrado."
+      )
+      return
+
+    try:
+      tamanho_alvo = float(self.v_size.get().strip() or 25.0)
+    except ValueError:
+      messagebox.showerror("Erro", "Valor do tamanho alvo inválido.")
+      return
+
+    ext = self.v_format.get()
+    destino = origem.parent / f"{origem.stem}_comprimido{ext}"
+
+    self.btn_v_start.configure(state="disabled", text="Processando Vídeo...")
+    self.log_v.insert(
+        "end",
+        f">>> Processando: {origem.name}\n"
+        f">>> Destino: {destino.name} | Formato: {ext}\n",
+    )
+    self.log_v.see("end")
 
     def worker():
-      origem = Path(self.v_file.get().strip())
-      if not origem.is_file():
-        messagebox.showerror(
-            "Erro", "Arquivo de vídeo de origem não encontrado."
-        )
-        return
-
       try:
-        tamanho_alvo = float(self.v_size.get().strip() or 25.0)
-      except ValueError:
-        messagebox.showerror("Erro", "Valor do tamanho alvo inválido.")
-        return
+        t_inicio = time.perf_counter()
+        res = comprimir_video(
+            origem=origem,
+            destino=destino,
+            tamanho_alvo_mb=tamanho_alvo,
+            audio_bitrate_kbps=96,
+        )
+        tempo = time.perf_counter() - t_inicio
+        self._post_ui(self._v_concluir, res, tempo)
+      except Exception as e:
+        self._post_ui(self._v_erro, e)
 
-      ext = self.v_format.get()
-      destino = origem.parent / f"{origem.stem}_comprimido{ext}"
+    self._worker_video = threading.Thread(target=worker, daemon=True)
+    self._worker_video.start()
 
-      self.btn_v_start.configure(state="disabled", text="Processando Vídeo...")
+  def _v_concluir(self, res, tempo_cronometrado):
+    tempo_exibicao = (
+        res.tempo_processamento_s
+        if res.tempo_processamento_s > 0
+        else tempo_cronometrado
+    )
+
+    if res.sucesso:
+      orig_mb = res.tamanho_original_bytes / (1024 * 1024)
+      final_mb = res.tamanho_final_bytes / (1024 * 1024)
+      reducao = ((orig_mb - final_mb) / orig_mb) * 100 if orig_mb else 0.0
+      vel_rel = (
+          res.duracao_segundos / tempo_exibicao if tempo_exibicao > 0 else 0.0
+      )
+
+      relatorio = (
+          f"\n{'='*55}\n"
+          " STATUS              : SUCESSO\n"
+          f" TEMPO CRONOMETRADO  : {tempo_exibicao:.2f} s ({vel_rel:.2f}x"
+          " tempo real)\n"
+          f" TAMANHO ORIGINAL    : {orig_mb:.2f} MB\n"
+          f" TAMANHO FINAL       : {final_mb:.2f} MB ({reducao:.1f}%"
+          " reduzido)\n"
+          f" TAXA DE BITS VÍDEO  : {res.bitrate_k} kbps\n"
+          f" GPU DETECTADA       : {res.telemetria.modelo_gpu}\n"
+          f" CARGA CPU (MÉD/PICO): {res.telemetria.cpu_media:.1f}% /"
+          f" {res.telemetria.cpu_pico:.1f}%\n"
+          f" CARGA GPU (MÉD/PICO): {res.telemetria.gpu_media:.1f}% /"
+          f" {res.telemetria.gpu_pico:.1f}%\n"
+          f" VRAM DE PICO        : {res.telemetria.vram_pico_mb:.1f} MB\n"
+          f"{'='*55}\n"
+      )
+      self.log_v.insert("end", relatorio)
+    else:
       self.log_v.insert(
           "end",
-          f">>> Processando: {origem.name}\n"
-          f">>> Destino: {destino.name} | Formato: {ext}\n",
-      )
-      self.log_v.see("end")
-
-      t_cronometro_inicio = time.perf_counter()
-      res = comprimir_video(
-          origem=origem,
-          destino=destino,
-          tamanho_alvo_mb=tamanho_alvo,
-          audio_bitrate_kbps=96,
-      )
-      tempo_total_cronometrado = time.perf_counter() - t_cronometro_inicio
-
-      # Usa o tempo retornado do core ou o cronômetro da chamada
-      tempo_exibicao = getattr(
-          res, "tempo_processamento_s", tempo_total_cronometrado
-      )
-      if tempo_exibicao <= 0:
-        tempo_exibicao = tempo_total_cronometrado
-
-      if res.sucesso:
-        orig_mb = res.tamanho_original_bytes / (1024 * 1024)
-        final_mb = res.tamanho_final_bytes / (1024 * 1024)
-        reducao = ((orig_mb - final_mb) / orig_mb) * 100
-        vel_rel = (
-            res.duracao_segundos / tempo_exibicao if tempo_exibicao > 0 else 0.0
-        )
-
-        relatorio = (
-            f"\n{'='*55}\n"
-            " STATUS              : SUCESSO\n"
-            f" TEMPO CRONOMETRADO  : {tempo_exibicao:.2f} s ({vel_rel:.2f}x"
-            " tempo real)\n"
-            f" TAMANHO ORIGINAL    : {orig_mb:.2f} MB\n"
-            f" TAMANHO FINAL       : {final_mb:.2f} MB ({reducao:.1f}%"
-            " reduzido)\n"
-            f" TAXA DE BITS VÍDEO  : {res.bitrate_k} kbps\n"
-            f" GPU DETECTADA       : {res.telemetria.modelo_gpu}\n"
-            f" CARGA CPU (MÉD/PICO): {res.telemetria.cpu_media:.1f}% /"
-            f" {res.telemetria.cpu_pico:.1f}%\n"
-            f" CARGA GPU (MÉD/PICO): {res.telemetria.gpu_media:.1f}% /"
-            f" {res.telemetria.gpu_pico:.1f}%\n"
-            f" VRAM DE PICO        : {res.telemetria.vram_pico_mb:.1f} MB\n"
-            f"{'='*55}\n"
-        )
-        self.log_v.insert("end", relatorio)
-      else:
-        self.log_v.insert(
-            "end",
-            f"\n[FALHA DE PROCESSAMENTO]\nTempo decorrido:"
-            f" {tempo_exibicao:.2f} s\nMotivo: {res.mensagem_erro}\n{'-'*55}\n",
-        )
-
-      self.log_v.see("end")
-      self.btn_v_start.configure(
-          state="normal", text="Iniciar Compressão de Vídeo"
+          f"\n[FALHA DE PROCESSAMENTO]\nTempo decorrido:"
+          f" {tempo_exibicao:.2f} s\nMotivo: {res.mensagem_erro}\n{'-'*55}\n",
       )
 
-    threading.Thread(target=worker, daemon=True).start()
+    self.log_v.see("end")
+    self.btn_v_start.configure(
+        state="normal", text="Iniciar Compressão de Vídeo"
+    )
+
+  def _v_erro(self, erro):
+    self.log_v.insert("end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n")
+    self.log_v.see("end")
+    self.btn_v_start.configure(
+        state="normal", text="Iniciar Compressão de Vídeo"
+    )
 
   # -------------------------------------------------------------
   # ABA: IMAGEM
@@ -304,109 +342,139 @@ class App(ctk.CTk):
       self.i_path.set(caminho)
 
   def _i_start(self):
-
-    def worker():
-      caminho_raw = self.i_path.get().strip()
-      origem = Path(caminho_raw)
-      if not origem.exists():
-        messagebox.showerror(
-            "Erro", "Caminho de imagem ou diretório inexistente."
-        )
-        return
-
-      try:
-        max_dim = int(self.i_max.get().strip() or 1920)
-        qualidade = int(self.i_qual.get().strip() or 80)
-      except ValueError:
-        messagebox.showerror(
-            "Erro", "Dimensão ou qualidade deve ser um número inteiro."
-        )
-        return
-
-      self.btn_i_start.configure(
-          state="disabled", text="Processando Imagens..."
+    origem = Path(self.i_path.get().strip())
+    if not origem.exists():
+      messagebox.showerror(
+          "Erro", "Caminho de imagem ou diretório inexistente."
       )
+      return
 
-      if origem.is_file():
-        destino = origem.parent / f"{origem.stem}_otimizada.jpg"
-        self.log_i.insert(
-            "end", f">>> Otimizando arquivo individual: {origem.name}\n"
-        )
-        self.log_i.see("end")
-
-        t_i = time.perf_counter()
-        res = otimizar_imagem(origem, destino, max_dim, qualidade)
-        duracao = getattr(res, "tempo_processamento_s", time.perf_counter() - t_i)
-
-        if res.sucesso:
-          orig_kb = res.tamanho_original_bytes / 1024
-          final_kb = res.tamanho_final_bytes / 1024
-          self.log_i.insert(
-              "end",
-              f"[OK] {destino.name}\n"
-              f"     Tamanho : {orig_kb:.1f} KB -> {final_kb:.1f} KB\n"
-              f"     Duração : {duracao:.3f} s\n{'-'*55}\n",
-          )
-        else:
-          self.log_i.insert(
-              "end",
-              f"[FALHA] {res.mensagem_erro} ({duracao:.3f} s)\n{'-'*55}\n",
-          )
-        self.log_i.see("end")
-        self.btn_i_start.configure(
-          state="normal", text="Iniciar Otimização de Imagens"
+    try:
+      max_dim = int(self.i_max.get().strip() or 1920)
+      qualidade = int(self.i_qual.get().strip() or 80)
+    except ValueError:
+      messagebox.showerror(
+          "Erro", "Dimensão ou qualidade deve ser um número inteiro."
       )
-        return
+      return
 
-      destino = origem / "otimizadas"
+    self.btn_i_start.configure(
+        state="disabled", text="Processando Imagens..."
+    )
+
+    if origem.is_file():
+      destino = origem.parent / f"{origem.stem}_otimizada.jpg"
       self.log_i.insert(
-          "end",
-          f">>> Processando lote em: {origem}\n>>> Saída: {destino}\n\n",
+          "end", f">>> Otimizando arquivo individual: {origem.name}\n"
       )
       self.log_i.see("end")
 
+      def worker_arquivo():
+        try:
+          res = otimizar_imagem(origem, destino, max_dim, qualidade)
+          self._post_ui(self._i_concluir_arquivo, res)
+        except Exception as e:
+          self._post_ui(self._i_erro, e)
+
+      self._worker_img = threading.Thread(target=worker_arquivo, daemon=True)
+      self._worker_img.start()
+      return
+
+    destino = origem / "otimizadas"
+    self.log_i.insert(
+        "end",
+        f">>> Processando lote em: {origem}\n>>> Saída: {destino}\n\n",
+    )
+    self.log_i.see("end")
+
+    def worker_lote():
       total = 0
       sucessos = 0
       bytes_antes = 0
       bytes_depois = 0
-      t_lote_inicio = time.perf_counter()
+      t_inicio = time.perf_counter()
+      try:
+        for res in otimizar_lote(origem, destino, max_dim, qualidade):
+          total += 1
+          if res.sucesso:
+            sucessos += 1
+            bytes_antes += res.tamanho_original_bytes
+            bytes_depois += res.tamanho_final_bytes
+          self._post_ui(self._i_log_item, res, sucessos)
+        tempo = time.perf_counter() - t_inicio
+        self._post_ui(
+            self._i_concluir_lote,
+            total,
+            sucessos,
+            bytes_antes,
+            bytes_depois,
+            tempo,
+        )
+      except Exception as e:
+        self._post_ui(self._i_erro, e)
 
-      for res in otimizar_lote(origem, destino, max_dim, qualidade):
-        total += 1
-        dur = getattr(res, "tempo_processamento_s", 0.0)
-        if res.sucesso:
-          sucessos += 1
-          bytes_antes += res.tamanho_original_bytes
-          bytes_depois += res.tamanho_final_bytes
-          final_kb = res.tamanho_final_bytes / 1024
-          self.log_i.insert(
-              "end",
-              f" [{sucessos:02d}] {res.caminho_origem.name:<30} ->"
-              f" {final_kb:7.1f} KB  ({dur:.3f} s)\n",
-          )
-        else:
-          self.log_i.insert(
-              "end",
-              f" [ERRO] {res.caminho_origem.name}: {res.mensagem_erro}\n",
-          )
-        self.log_i.see("end")
+    self._worker_img = threading.Thread(target=worker_lote, daemon=True)
+    self._worker_img.start()
 
-      tempo_acumulado = time.perf_counter() - t_lote_inicio
-      economia_mb = (bytes_antes - bytes_depois) / (1024 * 1024)
+  def _i_concluir_arquivo(self, res):
+    dur = res.tempo_processamento_s
+    if res.sucesso:
+      orig_kb = res.tamanho_original_bytes / 1024
+      final_kb = res.tamanho_final_bytes / 1024
       self.log_i.insert(
           "end",
-          f"\n{'='*55}\n"
-          f" Concluídas          : {sucessos}/{total} imagens\n"
-          f" Tempo Acumulado     : {tempo_acumulado:.2f} s\n"
-          f" Espaço Economizado  : {economia_mb:.2f} MB\n"
-          f"{'='*55}\n",
+          f"[OK] {res.caminho_destino.name}\n"
+          f"     Tamanho : {orig_kb:.1f} KB -> {final_kb:.1f} KB\n"
+          f"     Duração : {dur:.3f} s\n{'-'*55}\n",
       )
-      self.log_i.see("end")
-      self.btn_i_start.configure(
-          state="normal", text="Iniciar Otimização de Imagens"
+    else:
+      self.log_i.insert(
+          "end",
+          f"[FALHA] {res.mensagem_erro} ({dur:.3f} s)\n{'-'*55}\n",
       )
+    self.log_i.see("end")
+    self.btn_i_start.configure(
+        state="normal", text="Iniciar Otimização de Imagens"
+    )
 
-    threading.Thread(target=worker, daemon=True).start()
+  def _i_log_item(self, res, sucessos):
+    if res.sucesso:
+      final_kb = res.tamanho_final_bytes / 1024
+      self.log_i.insert(
+          "end",
+          f" [{sucessos:02d}] {res.caminho_origem.name:<30} ->"
+          f" {final_kb:7.1f} KB  ({res.tempo_processamento_s:.3f} s)\n",
+      )
+    else:
+      self.log_i.insert(
+          "end",
+          f" [ERRO] {res.caminho_origem.name}: {res.mensagem_erro}\n",
+      )
+    self.log_i.see("end")
+
+  def _i_concluir_lote(
+      self, total, sucessos, bytes_antes, bytes_depois, tempo
+  ):
+    economia_mb = (bytes_antes - bytes_depois) / (1024 * 1024)
+    self.log_i.insert(
+        "end",
+        f"\n{'='*55}\n"
+        f" Concluídas          : {sucessos}/{total} imagens\n"
+        f" Tempo Acumulado     : {tempo:.2f} s\n"
+        f" Espaço Economizado  : {economia_mb:.2f} MB\n"
+        f"{'='*55}\n",
+    )
+    self.log_i.see("end")
+    self.btn_i_start.configure(
+        state="normal", text="Iniciar Otimização de Imagens"
+    )
+
+  def _i_erro(self, erro):
+    self.log_i.insert("end", f"\n[FALHA INESPERADA] {erro}\n{'-'*55}\n")
+    self.log_i.see("end")
+    self.btn_i_start.configure(
+        state="normal", text="Iniciar Otimização de Imagens"
+    )
 
   # -------------------------------------------------------------
   # ABA: CALCULADORA
