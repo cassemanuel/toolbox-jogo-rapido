@@ -12,6 +12,7 @@ from core.calculadora import (
     converter_segundos,
 )
 from core.binarios import gerar_destino_unico
+from core.pdf import dividir_pdf, extrair_paginas, unir_pdfs
 from core.imagem import (
     FORMATOS_CONVERSAO,
     FORMATOS_SAIDA,
@@ -175,6 +176,56 @@ def tratar_converter(args: argparse.Namespace) -> None:
   )
 
 
+def tratar_pdf_unir(args: argparse.Namespace) -> None:
+  arquivos = [Path(p) for p in args.arquivos]
+  if args.destino:
+    destino = Path(args.destino)
+  else:
+    destino = gerar_destino_unico(
+        arquivos[0].parent, "unificado", "pdf", ".pdf"
+    )
+  res = unir_pdfs(arquivos, destino)
+  if not res.sucesso:
+    print(f"[FALHA] {res.mensagem_erro}")
+    sys.exit(1)
+  print(f"[OK] {res.caminho_destino} ({res.total_paginas} páginas)")
+
+
+def tratar_pdf_extrair(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  try:
+    paginas = [int(p.strip()) for p in args.paginas.split(",") if p.strip()]
+  except ValueError:
+    print("Erro: --paginas deve ser uma lista numérica (ex: 1,3,5).")
+    sys.exit(1)
+  if args.destino:
+    destino = Path(args.destino)
+  else:
+    destino = gerar_destino_unico(
+        origem.parent, origem.stem, "extraido", ".pdf"
+    )
+  res = extrair_paginas(origem, paginas, destino)
+  if not res.sucesso:
+    print(f"[FALHA] {res.mensagem_erro}")
+    sys.exit(1)
+  print(f"[OK] {res.caminho_destino} ({res.total_paginas} página(s))")
+
+
+def tratar_pdf_dividir(args: argparse.Namespace) -> None:
+  origem = Path(args.origem)
+  pasta = Path(args.destino) if args.destino else origem.parent / "paginas"
+  resultados = dividir_pdf(origem, pasta)
+  sucessos = sum(1 for r in resultados if r.sucesso)
+  for r in resultados:
+    if r.sucesso:
+      print(f"  [OK] {r.caminho_destino.name}")
+    else:
+      print(f"  [ERRO] {r.mensagem_erro}")
+  if sucessos == 0:
+    sys.exit(1)
+  print(f"[OK] {sucessos}/{len(resultados)} página(s) em {pasta}")
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(
       description="Toolkit Unificado de Automação de Mídia e Cálculos"
@@ -262,6 +313,36 @@ def main() -> None:
       help="Bitrate de áudio em kbps (vídeo/áudio)",
   )
   p_conv.set_defaults(func=tratar_converter)
+
+  # Subcomando pdf (unir / extrair / dividir)
+  p_pdf = subparsers.add_parser("pdf", help="Manipulação de PDFs")
+  pdf_sub = p_pdf.add_subparsers(
+      dest="acao_pdf", required=True, help="Ação de PDF"
+  )
+
+  p_unir = pdf_sub.add_parser("unir", help="Mescla PDFs em ordem")
+  p_unir.add_argument(
+      "--arquivos", nargs="+", required=True, help="PDFs de entrada"
+  )
+  p_unir.add_argument("--destino", type=str, help="PDF de saída")
+  p_unir.set_defaults(func=tratar_pdf_unir)
+
+  p_ext = pdf_sub.add_parser(
+      "extrair", help="Extrai páginas específicas (1-based)"
+  )
+  p_ext.add_argument("--origem", type=str, required=True)
+  p_ext.add_argument(
+      "--paginas", type=str, required=True, help="Ex: 1,3,5"
+  )
+  p_ext.add_argument("--destino", type=str, help="PDF de saída")
+  p_ext.set_defaults(func=tratar_pdf_extrair)
+
+  p_div = pdf_sub.add_parser(
+      "dividir", help="Salva cada página em arquivo próprio"
+  )
+  p_div.add_argument("--origem", type=str, required=True)
+  p_div.add_argument("--destino", type=str, help="Pasta de saída")
+  p_div.set_defaults(func=tratar_pdf_dividir)
 
   # Subcomando vasco
   p_vasco = subparsers.add_parser("vasco", help="Exibe a Cruz de Malta legada")

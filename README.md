@@ -5,6 +5,7 @@ Toolkit multimídia desktop para Windows que automatiza três domínios:
 - **Compressão de Vídeo com teto de tamanho** — recodifica via FFmpeg (H.264/MP4 ou VP9/WebM) calculando o bitrate alvo a partir da duração, para caber em ~25 MB. Telemetria de hardware (CPU/RAM/GPU/VRAM), progresso contínuo via `-progress pipe:1` e cancelamento gracioso.
 - **Otimização de Imagens em lote** — redimensionamento e recompressão JPEG via Pillow com processamento paralelo, correção de orientação EXIF e preservação do perfil de cor ICC.
 - **Calculadora de Tempo** — port do utilitário legado em C (`programa.c`): conversões HH:MM:SS e tempo ajustado por fator de playback.
+- **Manipulação de PDFs** — união, extração de páginas e divisão via `pypdf` (CLI `pdf unir|extrair|dividir`).
 
 ## Requisitos
 
@@ -69,6 +70,19 @@ python cli.py converter --origem video.mov --destino saida.mp4
 - **Vídeo→Vídeo** (`.mp4 .mkv .avi .mov .webm`): transcodificação com preservação de qualidade (CRF), sem compressão por teto de MB.
 - **Vídeo→Áudio** (`.mp3 .wav .aac`): extração com `-vn` (libmp3lame/pcm_s16le/aac).
 - **Imagem→Imagem** (`.png .jpg .webp .ico .bmp`): conversão 1:1 via Pillow sem redimensionamento; alfa preservado quando suportado.
+
+### Manipulação de PDFs
+
+```
+python cli.py pdf unir --arquivos doc1.pdf doc2.pdf [--destino unificado.pdf]
+python cli.py pdf extrair --origem doc.pdf --paginas 1,3,5 [--destino extraido.pdf]
+python cli.py pdf dividir --origem doc.pdf [--destino pasta/]
+```
+
+- **unir**: mescla os PDFs na ordem informada.
+- **extrair**: páginas em índice 1-based, validadas contra o total do documento.
+- **dividir**: salva cada página em arquivo próprio (default: pasta `paginas/` ao lado da origem).
+- Destinos omitidos recebem timestamp automático (`{stem}_{operacao}_{AAAAMMDD_HHMMSS}.pdf`) — nunca sobrescrevem.
 
 ### Calculadora de tempo
 
