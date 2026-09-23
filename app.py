@@ -23,12 +23,12 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 _NAV = [
-    ("home", "🏠  Início"),
-    ("videos", "🎬  Vídeos"),
-    ("imagens", "🖼️  Imagens"),
-    ("pdf", "📑  Documentos PDF"),
-    ("calc", "⏱️  Calculadora"),
-    ("energia", "⚡  Energia / Timer"),
+    ("home", "🏠", "Início"),
+    ("videos", "🎬", "Vídeos"),
+    ("imagens", "📷", "Imagens"),
+    ("pdf", "📑", "Documentos PDF"),
+    ("calc", "⏱️", "Calculadora"),
+    ("energia", "⚡", "Energia / Timer"),
 ]
 
 
@@ -77,10 +77,10 @@ class App(ctk.CTk):
         text_color="#4a9eff",
     ).pack(pady=(0, 18))
 
-    for chave, rotulo in _NAV:
+    for chave, icone, rotulo in _NAV:
       btn = ctk.CTkButton(
           sidebar,
-          text=rotulo,
+          text=f" {icone}   {rotulo}",
           anchor="w",
           compound="left",
           border_spacing=15,

@@ -12,7 +12,7 @@ _CARDS = [
     ),
     (
         "imagens",
-        "🖼️ Otimização de Imagens",
+        "📷 Otimização de Imagens",
         "Lotes, WebP, redimensionamento\ne conversão de fotos",
     ),
     (
