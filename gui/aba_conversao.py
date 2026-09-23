@@ -33,10 +33,12 @@ class AbaConversao(ctk.CTkFrame):
       self,
       master,
       post_ui: Callable[[Callable, Any], None],
+      tipo_fixo: str | None = None,
   ):
     super().__init__(master, fg_color="transparent")
     self.pack(fill="both", expand=True)
     self._post_ui = post_ui
+    self._tipo_fixo = tipo_fixo
 
     self._worker: threading.Thread | None = None
     self._ultimo_destino: Path | None = None
@@ -54,19 +56,21 @@ class AbaConversao(ctk.CTkFrame):
     )
     card.pack(fill="x", padx=15, pady=10)
 
-    ctk.CTkLabel(
-        card,
-        text="Tipo de Conversão:",
-        font=ctk.CTkFont(weight="bold"),
-    ).grid(row=0, column=0, padx=12, pady=10, sticky="w")
-
     self.conv_tipo = ctk.CTkSegmentedButton(
         card,
         values=["Vídeo / Áudio", "Imagem"],
         command=self._conv_tipo_changed,
     )
-    self.conv_tipo.set("Vídeo / Áudio")
-    self.conv_tipo.grid(row=0, column=1, padx=8, pady=10, sticky="w")
+    if self._tipo_fixo:
+      self.conv_tipo.set(self._tipo_fixo)
+    else:
+      self.conv_tipo.set("Vídeo / Áudio")
+      ctk.CTkLabel(
+          card,
+          text="Tipo de Conversão:",
+          font=ctk.CTkFont(weight="bold"),
+      ).grid(row=0, column=0, padx=12, pady=10, sticky="w")
+      self.conv_tipo.grid(row=0, column=1, padx=8, pady=10, sticky="w")
 
     ctk.CTkLabel(
         card,
@@ -106,10 +110,13 @@ class AbaConversao(ctk.CTkFrame):
     )
 
     ctk.CTkLabel(f_sub, text="Formato de Destino:").pack(side="left")
-    self.conv_formato = ctk.CTkComboBox(
-        f_sub, values=_FORMATOS_VIDEO_AUDIO, width=100
+    valores_iniciais = (
+        _FORMATOS_IMAGEM_CONVERSAO
+        if self._tipo() == "Imagem"
+        else _FORMATOS_VIDEO_AUDIO
     )
-    self.conv_formato.set(_FORMATOS_VIDEO_AUDIO[0])
+    self.conv_formato = ctk.CTkSegmentedButton(f_sub, values=valores_iniciais)
+    self.conv_formato.set(valores_iniciais[0])
     self.conv_formato.pack(side="left", padx=6)
 
     card.grid_columnconfigure(1, weight=1)
@@ -146,6 +153,9 @@ class AbaConversao(ctk.CTkFrame):
     )
     self.log_conv.pack(fill="both", expand=True, padx=15, pady=10)
 
+  def _tipo(self):
+    return self._tipo_fixo or self.conv_tipo.get()
+
   def _conv_tipo_changed(self, tipo):
     valores = (
         _FORMATOS_IMAGEM_CONVERSAO
@@ -165,7 +175,7 @@ class AbaConversao(ctk.CTkFrame):
   def _conv_select(self):
     if self.conv_modo.get() == "Pasta em Lote":
       caminho = filedialog.askdirectory()
-    elif self.conv_tipo.get() == "Imagem":
+    elif self._tipo() == "Imagem":
       caminho = filedialog.askopenfilename(
           filetypes=[
               ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.ico")
@@ -188,7 +198,7 @@ class AbaConversao(ctk.CTkFrame):
     origem = Path(self.conv_file.get().strip())
     em_lote = self.conv_modo.get() == "Pasta em Lote"
     ext_destino = self.conv_formato.get()
-    tipo = self.conv_tipo.get()
+    tipo = self._tipo()
 
     self.prog_conv.set(0)
     self.btn_conv_start.configure(state="disabled", text="Convertendo...")

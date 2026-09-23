@@ -1,7 +1,8 @@
 """Interface Gráfica Desktop Moderna (CustomTkinter)
 
-Container principal: janela, Tabview, fila de eventos thread-safe e
-protocolo de encerramento. As regras de cada aba vivem no pacote gui/.
+Container principal: janela, sidebar de navegação, área de conteúdo
+com telas empilhadas (tkraise), fila de eventos thread-safe e
+protocolo de encerramento. As regras de cada tela vivem no pacote gui/.
 """
 
 import queue
@@ -11,14 +12,23 @@ import customtkinter as ctk
 from core.calculadora import ARTE_VASCO
 from core.video import cancelar_processos_ativos
 from gui.aba_calculadora import AbaCalculadora
-from gui.aba_conversao import AbaConversao
 from gui.aba_energia import AbaEnergia
-from gui.aba_imagem import AbaImagem
 from gui.aba_pdf import AbaPdf
-from gui.aba_video import AbaVideo
+from gui.tela_home import TelaHome
+from gui.tela_imagem import TelaImagem
+from gui.tela_video import TelaVideo
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+_NAV = [
+    ("home", "🏠  Início"),
+    ("videos", "🎬  Vídeos"),
+    ("imagens", "🖼️  Imagens"),
+    ("pdf", "📑  Documentos PDF"),
+    ("calc", "⏱️  Calculadora"),
+    ("energia", "⚡  Energia / Timer"),
+]
 
 
 class App(ctk.CTk):
@@ -26,62 +36,96 @@ class App(ctk.CTk):
   def __init__(self):
     super().__init__()
     self.title("Media Automation Toolkit")
-    self.geometry("820x650")
-    self.minsize(760, 580)
+    self.geometry("1040x680")
+    self.minsize(960, 600)
 
     self.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 
     self._fila_ui: queue.Queue = queue.Queue()
     self._modal_saida: ctk.CTkToplevel | None = None
     self._restante_saida = 0
+    self._nav_btns: dict[str, ctk.CTkButton] = {}
 
-    rodape = ctk.CTkFrame(self, fg_color="transparent", height=28)
-    rodape.pack(fill="x", side="bottom", padx=20, pady=(0, 8))
+    self.grid_columnconfigure(1, weight=1)
+    self.grid_rowconfigure(0, weight=1)
+
+    self._montar_sidebar()
+    self._montar_conteudo()
+    self._navegar("home")
+
+    self.after(75, self._drenar_fila_ui)
+
+  # ---------------- Estrutura visual ----------------
+
+  def _montar_sidebar(self):
+    sidebar = ctk.CTkFrame(
+        self, width=200, corner_radius=0, fg_color="#161616"
+    )
+    sidebar.grid(row=0, column=0, sticky="nsew")
+    sidebar.grid_propagate(False)
 
     ctk.CTkLabel(
-        rodape,
-        text="Media Automation Toolkit v2.0 • 2021–2026 • Cássio Silva",
-        font=ctk.CTkFont(size=11),
-        text_color="#6e6e6e",
-    ).pack(side="left")
+        sidebar,
+        text="Media Toolkit",
+        font=ctk.CTkFont(size=16, weight="bold"),
+    ).pack(pady=(20, 2))
+    ctk.CTkLabel(
+        sidebar,
+        text="v2.0",
+        font=ctk.CTkFont(size=11, weight="bold"),
+        text_color="#4a9eff",
+    ).pack(pady=(0, 18))
+
+    for chave, rotulo in _NAV:
+      btn = ctk.CTkButton(
+          sidebar,
+          text=rotulo,
+          anchor="w",
+          height=38,
+          corner_radius=8,
+          fg_color="transparent",
+          hover_color="#2b2b2b",
+          text_color="#d4d4d4",
+          command=lambda c=chave: self._navegar(c),
+      )
+      btn.pack(fill="x", padx=10, pady=3)
+      self._nav_btns[chave] = btn
 
     ctk.CTkButton(
-        rodape,
+        sidebar,
         text="[ Sobre / História ]",
-        width=120,
-        height=22,
+        height=24,
         font=ctk.CTkFont(size=11),
         fg_color="transparent",
         hover_color="#2b2b2b",
         text_color="#4a9eff",
         command=self._abrir_sobre,
-    ).pack(side="right")
+    ).pack(side="bottom", pady=12)
 
-    self.tabview = ctk.CTkTabview(self, corner_radius=10)
-    self.tabview.pack(fill="both", expand=True, padx=20, pady=15)
+  def _montar_conteudo(self):
+    self.conteudo = ctk.CTkFrame(self, fg_color="transparent")
+    self.conteudo.grid(row=0, column=1, sticky="nsew")
 
-    self.abas = [
-        AbaVideo(
-            self.tabview.add("Compressão de Vídeo"), self._post_ui
-        ),
-        AbaImagem(
-            self.tabview.add("Otimização de Imagens"), self._post_ui
-        ),
-        AbaConversao(
-            self.tabview.add("Conversão de Mídia"), self._post_ui
-        ),
-        AbaPdf(
-            self.tabview.add("Manipulação de PDFs"), self._post_ui
-        ),
-        AbaCalculadora(
-            self.tabview.add("Calculadora de Tempo"), self._post_ui
-        ),
-        AbaEnergia(
-            self.tabview.add("Energia"), self._post_ui
-        ),
-    ]
+    self.telas = {
+        "home": TelaHome(self.conteudo, self._navegar),
+        "videos": TelaVideo(self.conteudo, self._post_ui),
+        "imagens": TelaImagem(self.conteudo, self._post_ui),
+        "pdf": AbaPdf(self.conteudo, self._post_ui),
+        "calc": AbaCalculadora(self.conteudo, self._post_ui),
+        "energia": AbaEnergia(self.conteudo, self._post_ui),
+    }
 
-    self.after(75, self._drenar_fila_ui)
+  def _navegar(self, chave: str):
+    for tela in self.telas.values():
+      tela.pack_forget()
+    self.telas[chave].pack(fill="both", expand=True)
+    for k, btn in self._nav_btns.items():
+      btn.configure(
+          fg_color="#1f6aa5" if k == chave else "transparent",
+          text_color="#ffffff" if k == chave else "#d4d4d4",
+      )
+
+  # ---------------- Infraestrutura ----------------
 
   def _abrir_sobre(self):
     modal = ctk.CTkToplevel(self)
@@ -132,13 +176,16 @@ class App(ctk.CTk):
 
   def _ao_fechar(self):
     cancelar_processos_ativos()
-    for aba in self.abas:
-      cancel_event = getattr(aba, "cancel_event", None)
+    for tela in self.telas.values():
+      cancel_event = getattr(tela, "cancel_event", None)
       if cancel_event is not None:
         cancel_event.set()
-      worker = getattr(aba, "worker", None)
-      if worker and worker.is_alive():
-        worker.join(timeout=3.0)
+      workers = getattr(
+          tela, "workers", [getattr(tela, "worker", None)]
+      )
+      for worker in workers:
+        if worker and worker.is_alive():
+          worker.join(timeout=3.0)
 
     if random.random() >= 0.5:
       self.destroy()

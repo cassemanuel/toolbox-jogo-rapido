@@ -11,11 +11,11 @@ from core.calculadora import (
 )
 
 _UNIDADES = {
-    "Segundos": "segundos",
-    "Minutos": "minutos",
+    "Seg": "segundos",
+    "Min": "minutos",
     "Horas": "horas",
     "Dias": "dias",
-    "Semanas": "semanas",
+    "Sem": "semanas",
     "Anos": "anos",
 }
 
@@ -154,14 +154,15 @@ class AbaCalculadora(ctk.CTkFrame):
     ctk.CTkLabel(
         card, text="Unidade de Origem:", font=ctk.CTkFont(weight="bold")
     ).grid(row=1, column=0, padx=15, pady=10, sticky="w")
-    self.conv_unidade = ctk.CTkComboBox(
+    self.conv_unidade = ctk.CTkSegmentedButton(
         card,
         values=list(_UNIDADES.keys()),
-        width=140,
-        state="readonly",
+        command=self._unidade_changed,
     )
     self.conv_unidade.set("Horas")
-    self.conv_unidade.grid(row=1, column=1, padx=15, pady=10, sticky="w")
+    self.conv_unidade.grid(
+        row=1, column=1, padx=15, pady=10, sticky="w"
+    )
 
     ctk.CTkButton(
         card,
@@ -213,6 +214,10 @@ class AbaCalculadora(ctk.CTkFrame):
         text_color="#D4AF37",
     )
     self.lbl_romanos.pack(pady=(8, 12))
+
+  def _unidade_changed(self, _valor):
+    if self.conv_valor.get().strip():
+      self._c_converter()
 
   def _c_converter(self):
     try:

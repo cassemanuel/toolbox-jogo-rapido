@@ -28,7 +28,15 @@ dist\MediaToolkit.exe
 python app.py
 ```
 
-A interface (`customtkinter`) oferece seis abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs, Calculadora de Tempo e Energia (agendamento de hibernação). Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
+A interface (`customtkinter`) usa **sidebar lateral + homepage em cards**: navegação por menu vertical (Início, Vídeos, Imagens, Documentos PDF, Calculadora, Energia/Timer) e tela inicial "Central de Automação e Mídia" com cards de atalho para cada ferramenta. Todas as opções de formato e unidade são seletores diretos (`CTkSegmentedButton`) — sem dropdowns.
+
+- **Vídeos** agrupa "Comprimir com Teto MB" e "Conversão Direta CRF" em seletor interno (vídeo/áudio, arquivo ou lote).
+- **Imagens** agrupa "Otimização" e "Conversão" de fotos (arquivo único ou pasta em lote).
+- **Documentos PDF** concentra os 7 modos de manipulação (abaixo).
+- **Calculadora** alterna "Aceleração de Playback" e "Conversão de Tempo" com unidades em seletor direto (Seg|Min|Horas|Dias|Sem|Anos).
+- **Energia/Timer** agenda `shutdown /h` com presets e contagem regressiva cancelável.
+
+Todas as telas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
 
 A aba **Manipulação de PDFs** (estilo PDFsam) concentra 7 modos em um seletor: **Unir** (lista ordenada de PDFs), **Extrair** (folhas por lista `1, 3-5, 8`), **Dividir** (cada página em `paginas_pdf/`), **Rotacionar** (90/180/270° em todas ou em páginas específicas), **Mix Alternado** (intercala frentes e versos, com opção de inverter B para escaneamento reverso), **Por Tamanho** (fatia em blocos de até N MB em `blocos_pdf/`) e **Por Marcador** (fatia pelo sumário/outline em `secoes_pdf/`, com aviso quando o documento não tem marcadores). O campo de arquivo exibe a contagem de folhas físicas em tempo real.
 

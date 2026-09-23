@@ -87,8 +87,8 @@ class AbaImagem(ctk.CTkFrame):
     self.i_qual.pack(side="left", padx=(6, 20))
 
     ctk.CTkLabel(f_sub, text="Formato:").pack(side="left")
-    self.i_fmt = ctk.CTkComboBox(
-        f_sub, values=list(FORMATOS_SAIDA.keys()), width=90
+    self.i_fmt = ctk.CTkSegmentedButton(
+        f_sub, values=list(FORMATOS_SAIDA.keys())
     )
     self.i_fmt.set("JPEG")
     self.i_fmt.pack(side="left", padx=6)

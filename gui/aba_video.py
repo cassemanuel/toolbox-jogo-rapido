@@ -30,6 +30,7 @@ class AbaVideo(ctk.CTkFrame):
 
     self._worker: threading.Thread | None = None
     self._cancel_video = threading.Event()
+    self.cancel_event = self._cancel_video
     self._ultimo_destino: Path | None = None
 
     self._montar_layout()
@@ -77,10 +78,9 @@ class AbaVideo(ctk.CTkFrame):
     ctk.CTkLabel(f_sub, text="MB").pack(side="left", padx=(0, 20))
 
     ctk.CTkLabel(f_sub, text="Formato:").pack(side="left")
-    self.v_format = ctk.CTkComboBox(
+    self.v_format = ctk.CTkSegmentedButton(
         f_sub,
         values=[".mp4", ".webm", ".mkv", ".mp3"],
-        width=90,
         command=self._v_formato_changed,
     )
     self.v_format.set(".mp4")
