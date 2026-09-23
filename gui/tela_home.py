@@ -41,15 +41,22 @@ class TelaHome(ctk.CTkFrame):
 
     ctk.CTkLabel(
         self,
-        text="Central de Automação e Mídia",
-        font=ctk.CTkFont(size=22, weight="bold"),
-    ).pack(pady=(35, 4))
+        text="⚡🛠️",
+        font=ctk.CTkFont(size=34),
+    ).pack(pady=(28, 0))
 
     ctk.CTkLabel(
         self,
-        text="Selecione uma ferramenta para começar",
+        text="TOOLBOX • JOGO RÁPIDO",
+        font=ctk.CTkFont(size=22, weight="bold"),
+    ).pack(pady=(4, 4))
+
+    ctk.CTkLabel(
+        self,
+        text="Automação multimídia, processamento de documentos"
+        " e rotinas de sistema",
         font=ctk.CTkFont(size=12),
-        text_color="#8a8a8a",
+        text_color="#888888",
     ).pack(pady=(0, 25))
 
     grade = ctk.CTkFrame(self, fg_color="transparent")

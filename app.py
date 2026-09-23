@@ -7,6 +7,7 @@ protocolo de encerramento. As regras de cada tela vivem no pacote gui/.
 
 import queue
 import random
+import webbrowser
 import customtkinter as ctk
 
 from core.calculadora import ARTE_VASCO
@@ -81,6 +82,8 @@ class App(ctk.CTk):
           sidebar,
           text=rotulo,
           anchor="w",
+          compound="left",
+          border_spacing=15,
           height=38,
           corner_radius=8,
           fg_color="transparent",
@@ -88,7 +91,7 @@ class App(ctk.CTk):
           text_color="#d4d4d4",
           command=lambda c=chave: self._navegar(c),
       )
-      btn.pack(fill="x", padx=10, pady=3)
+      btn.pack(fill="x", padx=10, pady=4)
       self._nav_btns[chave] = btn
 
     ctk.CTkButton(
@@ -136,7 +139,7 @@ class App(ctk.CTk):
 
     ctk.CTkLabel(
         modal,
-        text="Media Automation Toolkit v2.0",
+        text="Media Automation Toolkit v2.5",
         font=ctk.CTkFont(size=14, weight="bold"),
     ).pack(pady=(15, 5))
 
@@ -146,18 +149,34 @@ class App(ctk.CTk):
         "e tempo de vídeo. Evoluiu ao longo dos anos para suprir gargalos "
         "de compressão com teto estrito, otimização de imagens em lote, "
         "manipulação de documentos PDF e conversão multimídia multiformato."
-        "\n\nÚltima atualização: Versão 2.0 (17/09/2026)."
+        "\n\nÚltima atualização: Versão 2.5 (23/09/2026)."
     )
     box = ctk.CTkTextbox(
-        modal, wrap="word", font=ctk.CTkFont(size=12), height=180
+        modal, wrap="word", font=ctk.CTkFont(size=12), height=160
     )
     box.pack(fill="both", expand=True, padx=15, pady=10)
     box.insert("1.0", texto)
     box.configure(state="disabled")
 
     ctk.CTkButton(
+        modal,
+        text="🔗 Acessar Repositório no GitHub",
+        fg_color="#1f6aa5",
+        hover_color="#144870",
+        command=self._abrir_repositorio,
+    ).pack(pady=(0, 6))
+
+    ctk.CTkButton(
         modal, text="Fechar", width=100, command=modal.destroy
     ).pack(pady=(0, 12))
+
+  def _abrir_repositorio(self):
+    try:
+      webbrowser.open(
+          "https://github.com/cassemanuel/toolbox-jogo-rapido"
+      )
+    except Exception:
+      pass
 
   def _post_ui(self, fn, *args):
     self._fila_ui.put((fn, args))

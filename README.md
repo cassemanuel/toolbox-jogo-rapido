@@ -1,6 +1,6 @@
 # Media Automation Toolkit
 
-Toolkit multimídia desktop para Windows que automatiza três domínios:
+**Versão 2.5** (23/09/2026) — Toolkit multimídia desktop para Windows que automatiza:
 
 - **Compressão de Vídeo com teto de tamanho** — recodifica via FFmpeg (H.264/MP4 ou VP9/WebM) calculando o bitrate alvo a partir da duração, para caber em ~25 MB. Telemetria de hardware (CPU/RAM/GPU/VRAM), progresso contínuo via `-progress pipe:1` e cancelamento gracioso.
 - **Otimização de Imagens em lote** — redimensionamento e recompressão JPEG via Pillow com processamento paralelo, correção de orientação EXIF e preservação do perfil de cor ICC.

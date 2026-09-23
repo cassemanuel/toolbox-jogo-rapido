@@ -148,7 +148,16 @@ class AbaCalculadora(ctk.CTkFrame):
     ctk.CTkLabel(
         card, text="Valor:", font=ctk.CTkFont(weight="bold")
     ).grid(row=0, column=0, padx=15, pady=10, sticky="w")
-    self.conv_valor = ctk.CTkEntry(card, width=140)
+    self.conv_valor_var = ctk.StringVar()
+    self.conv_valor_var.trace_add(
+        "write", lambda *_: self._c_converter()
+    )
+    self.conv_valor = ctk.CTkEntry(
+        card, width=140, textvariable=self.conv_valor_var
+    )
+    self.conv_valor.bind(
+        "<KeyRelease>", lambda _e: self._c_converter()
+    )
     self.conv_valor.grid(row=0, column=1, padx=15, pady=10, sticky="w")
 
     ctk.CTkLabel(
@@ -163,15 +172,6 @@ class AbaCalculadora(ctk.CTkFrame):
     self.conv_unidade.grid(
         row=1, column=1, padx=15, pady=10, sticky="w"
     )
-
-    ctk.CTkButton(
-        card,
-        text="Converter Tempo",
-        command=self._c_converter,
-        width=160,
-        fg_color="#1f6aa5",
-        hover_color="#144870",
-    ).grid(row=2, column=0, columnspan=2, pady=12)
 
     painel = ctk.CTkFrame(raiz, corner_radius=8, fg_color="#1c1c1c")
     painel.pack(fill="x", padx=15, pady=10)
@@ -216,16 +216,32 @@ class AbaCalculadora(ctk.CTkFrame):
     self.lbl_romanos.pack(pady=(8, 12))
 
   def _unidade_changed(self, _valor):
-    if self.conv_valor.get().strip():
-      self._c_converter()
+    self._c_converter()
+
+  def _zerar_resultados(self):
+    sufixos = {
+        "Segundos": "s",
+        "Minutos": "min",
+        "Horas": "h",
+        "Dias": "dias",
+        "Semanas": "semanas",
+        "Anos": "anos (~365d)",
+    }
+    for nome, sufixo in sufixos.items():
+      self.res_labels[nome].configure(text=f"— {sufixo}")
+    self.lbl_romanos.configure(text="")
 
   def _c_converter(self):
+    texto = self.conv_valor.get().strip()
+    if not texto:
+      self._zerar_resultados()
+      return
     try:
-      valor = float(self.conv_valor.get().strip())
+      valor = float(texto)
       unidade = _UNIDADES[self.conv_unidade.get()]
       res = converter_unidade_tempo(valor, unidade)
-    except Exception as e:
-      messagebox.showerror("Erro de Entrada", str(e))
+    except (ValueError, Exception):
+      self._zerar_resultados()
       return
 
     self.res_labels["Segundos"].configure(
@@ -246,7 +262,12 @@ class AbaCalculadora(ctk.CTkFrame):
     self.res_labels["Anos"].configure(
         text=f"{_fmt_num(res.em_anos)} anos (~365d)"
     )
-    if res.romanos_dias:
+    if unidade == "anos" and res.romanos_anos:
+      self.lbl_romanos.configure(
+          text=f"🏛️ Anos Inteiros em Algarismos Romanos:"
+          f" [ {res.romanos_anos} ]"
+      )
+    elif res.romanos_dias:
       self.lbl_romanos.configure(
           text=f"🏛️ Dias Inteiros em Algarismos Romanos:"
           f" [ {res.romanos_dias} ]"

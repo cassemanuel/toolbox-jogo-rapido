@@ -66,7 +66,9 @@ class DecomposicaoTempoUniversal:
   em_semanas: float
   em_anos: float  # Base: 365 dias
   dias_inteiros: int
+  anos_inteiros: int = 0
   romanos_dias: Optional[str] = None
+  romanos_anos: Optional[str] = None
 
 
 _FATORES_SEGUNDOS = {
@@ -113,6 +115,7 @@ def converter_unidade_tempo(
 
   segundos_totais = valor * _FATORES_SEGUNDOS[unidade]
   dias_inteiros = int(segundos_totais // 86400)
+  anos_inteiros = int(segundos_totais // 31_536_000)
   return DecomposicaoTempoUniversal(
       segundos_totais=segundos_totais,
       em_segundos=segundos_totais,
@@ -122,7 +125,9 @@ def converter_unidade_tempo(
       em_semanas=segundos_totais / 604800,
       em_anos=segundos_totais / 31_536_000,
       dias_inteiros=dias_inteiros,
+      anos_inteiros=anos_inteiros,
       romanos_dias=converter_para_romanos(dias_inteiros),
+      romanos_anos=converter_para_romanos(anos_inteiros),
   )
 
 

@@ -52,7 +52,11 @@ def tratar_calc(args: argparse.Namespace) -> None:
     print(f"Dias     : {res.em_dias:,.2f} dias")
     print(f"Semanas  : {res.em_semanas:,.2f} semanas")
     print(f"Anos     : {res.em_anos:,.4f} anos (~365d)")
-    if res.romanos_dias:
+    if args.de.strip().lower() == "anos" and res.romanos_anos:
+      print(
+          f"Romanos  : {res.anos_inteiros} anos = {res.romanos_anos}"
+      )
+    elif res.romanos_dias:
       print(
           f"Romanos  : {res.dias_inteiros} dias = {res.romanos_dias}"
       )
