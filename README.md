@@ -101,8 +101,11 @@ python cli.py calc --minutos 90 --velocidade 1.5     # 90 min a 1.5x -> 01:00:00
 python cli.py calc --segundos 5025                    # conversão para HH:MM:SS
 python cli.py calc --minutos-totais 90
 python cli.py calc --horas 2
+python cli.py calc --converter 120 --de horas         # decomposição universal + romanos
 python cli.py vasco                                   # ASCII art legada
 ```
+
+O conversor universal aceita `segundos|minutos|horas|dias|semanas|anos` (ano = 365 dias) e projeta o valor em todas as unidades; quando o total equivale a 1–3999 dias inteiros, exibe também o equivalente em algarismos romanos (ex: 5 dias = `V`, 14 dias = `XIV`). Na GUI, a aba oferece os modos "Aceleração de Playback" e "Conversão de Tempo" com painel de decomposição e rodapé em romanos.
 
 ## Build com PyInstaller
 

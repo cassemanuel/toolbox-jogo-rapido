@@ -10,6 +10,7 @@ from core.calculadora import (
     converter_horas,
     converter_minutos,
     converter_segundos,
+    converter_unidade_tempo,
 )
 from core.binarios import gerar_destino_unico
 from core.pdf import (
@@ -32,6 +33,27 @@ from core.video import comprimir_video, converter_midia
 
 
 def tratar_calc(args: argparse.Namespace) -> None:
+  if args.converter is not None:
+    if not args.de:
+      print("Erro: --de é obrigatório junto de --converter.")
+      sys.exit(1)
+    try:
+      res = converter_unidade_tempo(args.converter, args.de)
+    except ValueError as e:
+      print(f"Erro: {e}")
+      sys.exit(1)
+    print(f"--- Decomposição de {args.converter:g} {args.de} ---")
+    print(f"Segundos : {res.em_segundos:,.2f} s")
+    print(f"Minutos  : {res.em_minutos:,.2f} min")
+    print(f"Horas    : {res.em_horas:,.2f} h")
+    print(f"Dias     : {res.em_dias:,.2f} dias")
+    print(f"Semanas  : {res.em_semanas:,.2f} semanas")
+    print(f"Anos     : {res.em_anos:,.4f} anos (~365d)")
+    if res.romanos_dias:
+      print(
+          f"Romanos  : {res.dias_inteiros} dias = {res.romanos_dias}"
+      )
+    return
   if args.minutos is not None and args.velocidade is not None:
     duracao_original = args.minutos * 60.0
     resultado = calcular_aceleracao_tempo(duracao_original, args.velocidade)
@@ -335,6 +357,17 @@ def main() -> None:
       "--minutos-totais", type=int, help="Converte minutos para HH:MM:SS"
   )
   p_calc.add_argument("--horas", type=int, help="Converte horas para HH:MM:SS")
+  p_calc.add_argument(
+      "--converter",
+      type=float,
+      help="Conversão universal: valor numérico a decompor",
+  )
+  p_calc.add_argument(
+      "--de",
+      dest="de",
+      type=str,
+      help="Unidade de origem: segundos|minutos|horas|dias|semanas|anos",
+  )
   p_calc.set_defaults(func=tratar_calc)
 
   # Subcomando imagem

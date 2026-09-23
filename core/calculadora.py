@@ -1,6 +1,7 @@
 """Módulo de cálculos aritméticos de tempo e alocação de bitrate."""
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,76 @@ def converter_minutos(minutos: int) -> DuracaoFormatada:
 
 def converter_horas(horas: int) -> DuracaoFormatada:
   return decompor_segundos(float(horas * 3600))
+
+
+@dataclass(frozen=True)
+class DecomposicaoTempoUniversal:
+  segundos_totais: float
+  em_segundos: float
+  em_minutos: float
+  em_horas: float
+  em_dias: float
+  em_semanas: float
+  em_anos: float  # Base: 365 dias
+  dias_inteiros: int
+  romanos_dias: Optional[str] = None
+
+
+_FATORES_SEGUNDOS = {
+    "segundos": 1.0,
+    "minutos": 60.0,
+    "horas": 3600.0,
+    "dias": 86400.0,
+    "semanas": 604800.0,
+    "anos": 31_536_000.0,  # 365 dias
+}
+
+_TABELA_ROMANA = (
+    (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+    (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+    (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+)
+
+
+def converter_para_romanos(numero: int) -> Optional[str]:
+  """Converte inteiro de 1 a 3999 para algarismos romanos."""
+  if not isinstance(numero, int) or not 1 <= numero <= 3999:
+    return None
+  resultado = ""
+  restante = numero
+  for valor, simbolo in _TABELA_ROMANA:
+    while restante >= valor:
+      resultado += simbolo
+      restante -= valor
+  return resultado
+
+
+def converter_unidade_tempo(
+    valor: float, unidade_origem: str
+) -> DecomposicaoTempoUniversal:
+  """Normaliza 'valor' em segundos e projeta em todas as unidades."""
+  unidade = unidade_origem.strip().lower()
+  if unidade not in _FATORES_SEGUNDOS:
+    raise ValueError(
+        f"Unidade inválida: '{unidade_origem}'. "
+        f"Use: {', '.join(_FATORES_SEGUNDOS)}."
+    )
+  if valor < 0:
+    raise ValueError("O valor não pode ser negativo.")
+
+  segundos_totais = valor * _FATORES_SEGUNDOS[unidade]
+  dias_inteiros = int(segundos_totais // 86400)
+  return DecomposicaoTempoUniversal(
+      segundos_totais=segundos_totais,
+      em_segundos=segundos_totais,
+      em_minutos=segundos_totais / 60,
+      em_horas=segundos_totais / 3600,
+      em_dias=segundos_totais / 86400,
+      em_semanas=segundos_totais / 604800,
+      em_anos=segundos_totais / 31_536_000,
+      dias_inteiros=dias_inteiros,
+      romanos_dias=converter_para_romanos(dias_inteiros),
+  )
 
 
 BITRATE_MIN_KBPS = 150
