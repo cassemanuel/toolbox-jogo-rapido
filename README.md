@@ -6,6 +6,7 @@ Toolkit multimídia desktop para Windows que automatiza três domínios:
 - **Otimização de Imagens em lote** — redimensionamento e recompressão JPEG via Pillow com processamento paralelo, correção de orientação EXIF e preservação do perfil de cor ICC.
 - **Calculadora de Tempo** — port do utilitário legado em C (`programa.c`): conversões HH:MM:SS e tempo ajustado por fator de playback.
 - **Manipulação de PDFs** — união, extração, divisão, rotação, mix frente/verso e fatiamento por tamanho ou marcadores via `pypdf` (CLI `pdf unir|extrair|dividir|rotacionar|mix|dividir-tamanho|dividir-marcadores`).
+- **Energia / Hibernação** — agendamento de `shutdown /h` com presets (10/30/60 min) ou tempo customizado em segundos, pré-visualização do horário exato, contagem regressiva e cancelamento imediato (CLI `hibernar --segundos N`).
 
 ## Requisitos
 
@@ -27,7 +28,7 @@ dist\MediaToolkit.exe
 python app.py
 ```
 
-A interface (`customtkinter`) oferece cinco abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs e Calculadora de Tempo. Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
+A interface (`customtkinter`) oferece seis abas: Compressão de Vídeo (teto de MB com barra de progresso e cancelamento), Otimização de Imagens (arquivo único ou pasta em lote), Conversão de Mídia (troca de formato direta, sem teto), Manipulação de PDFs, Calculadora de Tempo e Energia (agendamento de hibernação). Todas as abas de mídia incluem botão "Abrir Pasta de Destino" sempre ativo.
 
 A aba **Manipulação de PDFs** (estilo PDFsam) concentra 7 modos em um seletor: **Unir** (lista ordenada de PDFs), **Extrair** (folhas por lista `1, 3-5, 8`), **Dividir** (cada página em `paginas_pdf/`), **Rotacionar** (90/180/270° em todas ou em páginas específicas), **Mix Alternado** (intercala frentes e versos, com opção de inverter B para escaneamento reverso), **Por Tamanho** (fatia em blocos de até N MB em `blocos_pdf/`) e **Por Marcador** (fatia pelo sumário/outline em `secoes_pdf/`, com aviso quando o documento não tem marcadores). O campo de arquivo exibe a contagem de folhas físicas em tempo real.
 
@@ -102,6 +103,7 @@ python cli.py calc --segundos 5025                    # conversão para HH:MM:SS
 python cli.py calc --minutos-totais 90
 python cli.py calc --horas 2
 python cli.py calc --converter 120 --de horas         # decomposição universal + romanos
+python cli.py hibernar --segundos 700                 # agenda shutdown /h (Ctrl+C aborta)
 python cli.py vasco                                   # ASCII art legada
 ```
 

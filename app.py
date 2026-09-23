@@ -12,6 +12,7 @@ from core.calculadora import ARTE_VASCO
 from core.video import cancelar_processos_ativos
 from gui.aba_calculadora import AbaCalculadora
 from gui.aba_conversao import AbaConversao
+from gui.aba_energia import AbaEnergia
 from gui.aba_imagem import AbaImagem
 from gui.aba_pdf import AbaPdf
 from gui.aba_video import AbaVideo
@@ -75,6 +76,9 @@ class App(ctk.CTk):
         AbaCalculadora(
             self.tabview.add("Calculadora de Tempo"), self._post_ui
         ),
+        AbaEnergia(
+            self.tabview.add("Energia"), self._post_ui
+        ),
     ]
 
     self.after(75, self._drenar_fila_ui)
@@ -129,6 +133,9 @@ class App(ctk.CTk):
   def _ao_fechar(self):
     cancelar_processos_ativos()
     for aba in self.abas:
+      cancel_event = getattr(aba, "cancel_event", None)
+      if cancel_event is not None:
+        cancel_event.set()
       worker = getattr(aba, "worker", None)
       if worker and worker.is_alive():
         worker.join(timeout=3.0)

@@ -1,8 +1,11 @@
 """Ponto de entrada unificado via linha de comando para o toolkit multimídia."""
 
 import argparse
+from datetime import datetime, timedelta
 from pathlib import Path
+import subprocess
 import sys
+import time
 
 from core.calculadora import (
     ARTE_VASCO,
@@ -336,6 +339,38 @@ def tratar_pdf_dividir_marcadores(args: argparse.Namespace) -> None:
   _imprimir_blocos_pdf(resultados, pasta)
 
 
+def tratar_hibernar(args: argparse.Namespace) -> None:
+  total = int(args.segundos)
+  if total <= 0:
+    print("Erro: --segundos deve ser um inteiro > 0.")
+    sys.exit(1)
+  alvo = datetime.now() + timedelta(seconds=total)
+  print(
+      f"Hibernação agendada para {alvo:%H:%M:%S}"
+      f" (Ctrl+C para abortar)"
+  )
+  try:
+    restante = total
+    while restante > 0:
+      h, rem = divmod(restante, 3600)
+      m, s = divmod(rem, 60)
+      print(
+          f"\rTempo restante: {h:02d}:{m:02d}:{s:02d}   ",
+          end="",
+          flush=True,
+      )
+      time.sleep(1)
+      restante -= 1
+  except KeyboardInterrupt:
+    print("\nAgendamento cancelado pelo usuário.")
+    return
+  print("\nComando de hibernação disparado.")
+  subprocess.run(
+      ["shutdown", "/h"],
+      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+  )
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(
       description="Toolkit Unificado de Automação de Mídia e Cálculos"
@@ -514,6 +549,15 @@ def main() -> None:
   )
   p_dmarc.add_argument("--destino", type=str, help="Pasta de saída")
   p_dmarc.set_defaults(func=tratar_pdf_dividir_marcadores)
+
+  # Subcomando hibernar
+  p_hib = subparsers.add_parser(
+      "hibernar", help="Agenda hibernação do Windows em N segundos"
+  )
+  p_hib.add_argument(
+      "--segundos", type=int, required=True, help="Contagem em segundos"
+  )
+  p_hib.set_defaults(func=tratar_hibernar)
 
   # Subcomando vasco
   p_vasco = subparsers.add_parser("vasco", help="Exibe a Cruz de Malta legada")
